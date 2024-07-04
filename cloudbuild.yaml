@@ -17,4 +17,5 @@ steps:
 images:
 - 'gcr.io/$PROJECT_ID/heart-rate-app10'
 
-logsBucket: 'gs://prophet-428401_cloudbuild'
+options:
+  logging: CLOUD_LOGGING_ONLY
