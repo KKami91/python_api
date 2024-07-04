@@ -1,0 +1,9 @@
+fastapi==0.111.0
+pydantic==2.8.0
+boto3==1.34.138
+pandas==2.2.2
+prophet==1.1.5
+pymongo==3.10.0
+python-dotenv==1.0.1
+numpy==2.0.0
+uvicorn==0.30.1
