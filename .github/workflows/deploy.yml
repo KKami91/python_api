@@ -7,7 +7,7 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: heart-rate-app10  # 실제 서비스 이름으로 변경하세요
+  SERVICE_NAME: heart-rate-app10
   REGION: asia-northeast3
 
 jobs:
