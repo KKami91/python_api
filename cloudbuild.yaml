@@ -16,3 +16,6 @@ steps:
 
 images:
 - 'gcr.io/$PROJECT_ID/heart-rate-app10'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
