@@ -11,7 +11,7 @@ steps:
     gcloud run deploy heart-rate-app10 \
       --image gcr.io/$PROJECT_ID/heart-rate-app10 \
       --platform managed \
-      --region us-central1 \
+      --region asia-northeast3 \
       --allow-unauthenticated
 
 images:
