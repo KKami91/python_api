@@ -13,6 +13,7 @@ from datetime import timedelta
 from typing import Optional
 from dotenv import load_dotenv
 from pymongo import MongoClient
+from urllib.parse import unquote
 
 
 app = FastAPI()
@@ -157,12 +158,15 @@ def predict_heart_rate(df):
 @app.get("/prediction_dates/{user_email}")
 async def get_prediction_dates(user_email: str):
     dates = prediction_collection.distinct("prediction_date", {"user_email": user_email})
-    return {"dates": [date.strftime("%Y-%m-%d %H:%M:%S") for date in dates]}
+    return {"dates": [date.isoformat() for date in dates]}
 
 @app.get("/prediction_data/{user_email}/{prediction_date}")
 async def get_prediction_data(user_email: str, prediction_date: str):
     try:
-        date = datetime.strptime(prediction_date, "%Y-%m-%d %H:%M:%S")
+        # URL 디코딩 및 ISO 형식 파싱
+        decoded_date = unquote(prediction_date)
+        date = datetime.fromisoformat(decoded_date)
+        
         prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": date})
         if prediction:
             return {"data": prediction["data"]}
