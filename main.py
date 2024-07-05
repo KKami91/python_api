@@ -92,7 +92,7 @@ def query_heart_rate_data(user_email: str, limit: int = 40000):
         while len(items) < limit:
             query_params = {
                 'TableName': TABLE_NAME,
-                'KeyConditionExpression': 'PK = :pk begins_with(SK, :sk_prefix)',
+                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
                 'ExpressionAttributeValues': {
                     ':pk': {'S': f'U#{user_email}'},
                     ':sk_prefix': {'S': f'HeartRateRecord#'},
