@@ -18,6 +18,9 @@ from pymongo import MongoClient
 app = FastAPI()
 load_dotenv()
 
+class UserEmailRequest(BaseModel):
+    user_email: str
+
 # CORS 미들웨어 추가
 app.add_middleware(
     CORSMiddleware,
@@ -145,7 +148,8 @@ def predict_heart_rate(df):
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
 @app.post("/analyze_and_predict")
-async def analyze_and_predict(user_email: str):
+async def analyze_and_predict(request: UserEmailRequest):
+    user_email = request.user_email
     items = query_heart_rate_data(user_email)
     if not items:
         raise HTTPException(status_code=404, detail="유저 정보 없음")
