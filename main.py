@@ -129,9 +129,10 @@ def process_heart_rate_data(items):
     return processed_data
 
 def save_prediction_to_mongodb(user_email: str, prediction_data):
+    korea_time = datetime.now() + timedelta(hours=9)
     prediction_collection.insert_one({
         "user_email": user_email,
-        "prediction_date": datetime.now(),
+        "prediction_date": korea_time,
         "data": prediction_data.to_dict('records')
     })
 
@@ -143,6 +144,7 @@ def predict_heart_rate(df):
                     yearly_seasonality=False,
                     interval_width=0.95)
     print(f'DF : {df}')
+    ## 여기까지 들어옴 ##
     model.fit(df)
     print('End model.fit(df)')
     future = model.make_future_dataframe(periods=60*24*3, freq='min')
@@ -151,6 +153,23 @@ def predict_heart_rate(df):
     print('End forecast')
     print(f'In predict_heart_rate : {forecast}')   
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+
+@app.get("/prediction_dates/{user_email}")
+async def get_prediction_dates(user_email: str):
+    dates = prediction_collection.distinct("prediction_date", {"user_email": user_email})
+    return {"dates": [date.strftime("%Y-%m-%d %H:%M:%S") for date in dates]}
+
+@app.get("/prediction_data/{user_email}/{prediction_date}")
+async def get_prediction_data(user_email: str, prediction_date: str):
+    try:
+        date = datetime.strptime(prediction_date, "%Y-%m-%d %H:%M:%S")
+        prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": date})
+        if prediction:
+            return {"data": prediction["data"]}
+        else:
+            raise HTTPException(status_code=404, detail="Prediction data not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format")
 
 @app.post("/analyze_and_predict")
 async def analyze_and_predict(request: UserEmailRequest):
