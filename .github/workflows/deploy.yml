@@ -40,6 +40,6 @@ jobs:
           --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
           --platform managed \
           --allow-unauthenticated \
-          --memory 4Gi \
-          --cpu 2 \
+          --memory 2Gi \
+          --cpu 1 \
           --set-env-vars "AWS_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY }},AWS_SECRET_KEY=${{ secrets.AWS_SECRET_KEY }},AWS_REGION=${{ secrets.AWS_REGION }},MONGODB_URI=${{ secrets.MONGODB_URI }}"
