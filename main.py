@@ -125,6 +125,7 @@ def process_heart_rate_data(items):
                 'ds': converted_timestamp,
                 'y': int(item['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N'])
             })
+    print(f'In Process Heart Rate Data : {processed_data}')
     return processed_data
 
 def save_prediction_to_mongodb(user_email: str, prediction_data):
@@ -141,10 +142,12 @@ def predict_heart_rate(df):
                     weekly_seasonality=False,
                     yearly_seasonality=False,
                     interval_width=0.95)
+    print(f'DF : {df}')
     model.fit(df)
     
     future = model.make_future_dataframe(periods=60*24*3, freq='min')
-    forecast = model.predict(future)   
+    forecast = model.predict(future)
+    print(f'In predict_heart_rate : {forecast}')   
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
 @app.post("/analyze_and_predict")
@@ -158,10 +161,12 @@ async def analyze_and_predict(request: UserEmailRequest):
         raise HTTPException(status_code=404, detail="유저 정보 없음")
     print(f"Found {len(items)} items for user: {user_email}")
     processed_data = process_heart_rate_data(items)
+    print(f'In analyze_and_predict Processed DAta: {processed_data}')
     if not processed_data:
         raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
     
     df = pd.DataFrame(processed_data)
+    print(f'In analyze_and_predict DF : {df}')
     df['ds'] = pd.to_datetime(df['ds'])
     
     forecast = predict_heart_rate(df)
