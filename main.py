@@ -144,9 +144,11 @@ def predict_heart_rate(df):
                     interval_width=0.95)
     print(f'DF : {df}')
     model.fit(df)
-    
+    print('End model.fit(df)')
     future = model.make_future_dataframe(periods=60*24*3, freq='min')
+    print('End future')
     forecast = model.predict(future)
+    print('End forecast')
     print(f'In predict_heart_rate : {forecast}')   
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
@@ -166,7 +168,7 @@ async def analyze_and_predict(request: UserEmailRequest):
         raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
     
     df = pd.DataFrame(processed_data)
-    print(f'In analyze_and_predict DF : {df}')
+    print(f'In analyze_and_predict DF : {df}') # 
     df['ds'] = pd.to_datetime(df['ds'])
     
     forecast = predict_heart_rate(df)
