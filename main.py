@@ -150,10 +150,13 @@ def predict_heart_rate(df):
 @app.post("/analyze_and_predict")
 async def analyze_and_predict(request: UserEmailRequest):
     user_email = request.user_email
+    print(f"Attempting to query data for user: {user_email}")
     items = query_heart_rate_data(user_email)
+    print(f"items: {items}")
     if not items:
+        print(f"no data for user: {user_email}")
         raise HTTPException(status_code=404, detail="유저 정보 없음")
-    
+    print(f"Found {len(items)} items for user: {user_email}")
     processed_data = process_heart_rate_data(items)
     if not processed_data:
         raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
