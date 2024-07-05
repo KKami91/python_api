@@ -168,7 +168,7 @@ async def analyze_and_predict(request: UserEmailRequest):
         raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
     
     df = pd.DataFrame(processed_data)
-    print(f'In analyze_and_predict DF : {df}') # 
+    print(f'In analyze_and_predict DF : {df}')
     df['ds'] = pd.to_datetime(df['ds'])
     
     forecast = predict_heart_rate(df)
