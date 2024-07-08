@@ -230,7 +230,7 @@ async def check_db(request: UserEmailRequest):
         return {'message': '데이터 저장 완료'}
     
     datetime_last = prediction_collection.find()[prediction_collection.count()-1]['data'][-4321]['ds']
-    last_date = datetime_last.year + '-' + datetime_last.month + '-' + datetime_last.day + ' ' + datetime_last.hour + ':' + datetime_last.minute + ':' + datetime_last.second
+    last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
     
     if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
         # 새로 동기화된 데이터가 DynamoDB에 없을 경우
