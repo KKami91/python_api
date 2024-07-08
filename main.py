@@ -237,8 +237,7 @@ async def check_db(request: UserEmailRequest):
         return {'message': '데이터 저장 완료'}
     
     last_data = list(prediction_collection.find({"user_email": user_email}))[-1]
-    user_data_length = len(last_data)
-    datetime_last = last_data[user_data_length - 1]['data'][-4321]['ds']
+    datetime_last = last_data['data'][-4321]['ds']
     last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
     
     if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
