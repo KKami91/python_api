@@ -189,13 +189,19 @@ async def get_prediction_dates(user_email: str):
 async def get_prediction_data(user_email: str, prediction_date: str):
     try:
         # URL 디코딩 및 ISO 형식 파싱
+        print(f'prediction_date : {prediction_date}')
         decoded_date = unquote(prediction_date)
+        print(f'decoded_date : {decoded_date}')
         date = datetime.fromisoformat(decoded_date)
+        print(f'date : {date}')
         
         prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": date})
+        print(f'prediction : {prediction}')
         if prediction:
+            print('in True')
             return {"data": prediction["data"]}
         else:
+            print('in False')
             raise HTTPException(status_code=404, detail="Prediction data not found")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
