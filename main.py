@@ -86,7 +86,8 @@ def get_month_lastday(year, month):
     next_month = datetime(year=year, month=month, day=1).date() + relativedelta.relativedelta(months=1)
     return (next_month - timedelta(days=1)).day
 
-def query_heart_rate_data(user_email: str, limit: int = 40000):
+# 마지막 데이터로부터 40000개의 데이터만 query
+def query_latest_heart_rate_data(user_email: str, limit: int = 40000):
     items = []
     last_evaluated_key = None
     try:
@@ -98,8 +99,10 @@ def query_heart_rate_data(user_email: str, limit: int = 40000):
                     ':pk': {'S': f'U#{user_email}'},
                     ':sk_prefix': {'S': f'HeartRateRecord#'},
                 },
+                'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
                 'Limit': min(limit - len(items), 1000)
             }
+            
             if last_evaluated_key:
                 query_params['ExclusiveStartKey'] = last_evaluated_key
             
@@ -110,7 +113,35 @@ def query_heart_rate_data(user_email: str, limit: int = 40000):
             last_evaluated_key = response.get('LastEvaluatedKey')
             if not last_evaluated_key or len(items) >= limit:
                 break
-        return items[-limit:]
+        
+        # 원래 순서로 되돌리기
+        items.reverse()
+        
+        return items[:limit] 
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+    
+# 마지막 데이터 1개만 query (DynamoDB 데이터가 새로 동기화가 되었는지 확인 -> MongoDB에 저장된 데이터와 비교를 위해)    
+def query_one_heart_rate_data(user_email: str):
+    try:
+        query_params = {
+            'TableName': TABLE_NAME,
+            'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+            'ExpressionAttributeValues': {
+                ':pk': {'S': f'U#{user_email}'},
+                ':sk_prefix': {'S': f'HeartRateRecord#'},
+            },
+            'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+            'Limit': 1  # 딱 1개의 항목만 요청
+        }
+        
+        response = dynamodb.query(**query_params)
+        
+        if response['Items']:
+            return response['Items'][0]  # 첫 번째(가장 최신) 항목만 반환
+        else:
+            return None  # 결과가 없을 경우
     except ClientError as e:
         print(f"An error occurred: {e.response['Error']['Message']}")
         return None
@@ -133,7 +164,7 @@ def save_prediction_to_mongodb(user_email: str, prediction_data):
     korea_time = datetime.now() + timedelta(hours=9)
     prediction_collection.insert_one({
         "user_email": user_email,
-        "prediction_date": korea_time,
+        "prediction_date": korea_time.year + '-' + korea_time.month + '-' + korea_time.day + ' ' + korea_time.hour + ':' + korea_time.minute + ':' + korea_time.second,
         "data": prediction_data.to_dict('records')
     })
 
@@ -144,15 +175,9 @@ def predict_heart_rate(df):
                     weekly_seasonality=False,
                     yearly_seasonality=False,
                     interval_width=0.95)
-    print(f'DF : {df}')
-    ## 여기까지 들어옴 ##
     model.fit(df)
-    print('End model.fit(df)')
     future = model.make_future_dataframe(periods=60*24*3, freq='min')
-    print('End future')
-    forecast = model.predict(future)
-    print('End forecast')
-    print(f'In predict_heart_rate : {forecast}')   
+    forecast = model.predict(future)  
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
 @app.get("/prediction_dates/{user_email}")
@@ -175,28 +200,67 @@ async def get_prediction_data(user_email: str, prediction_date: str):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
 
-@app.post("/analyze_and_predict")
-async def analyze_and_predict(request: UserEmailRequest):
-    user_email = request.user_email
-    print(f"Attempting to query data for user: {user_email}")
-    items = query_heart_rate_data(user_email)
-    print(f"items: {items}")
-    if not items:
-        print(f"no data for user: {user_email}")
+
+def create_dataframe(json_data):
+    if not json_data:
         raise HTTPException(status_code=404, detail="유저 정보 없음")
-    print(f"Found {len(items)} items for user: {user_email}")
-    processed_data = process_heart_rate_data(items)
-    print(f'In analyze_and_predict Processed DAta: {processed_data}')
-    if not processed_data:
+    processed_load_data = process_heart_rate_data(json_data)
+    if not processed_load_data:
         raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
     
-    df = pd.DataFrame(processed_data)
-    print(f'In analyze_and_predict DF : {df}')
+    df = pd.DataFrame(processed_load_data)
     df['ds'] = pd.to_datetime(df['ds'])
     
-    forecast = predict_heart_rate(df)
-    save_prediction_to_mongodb(user_email, forecast)
-    return {"message": "분석 끝 예측 데이터 저장", "데이터 길이": len(df)}
+    return df
+
+# DynamoDB의 마지막 데이터(시간)과 저장된 MongoDB의 -4321번째(3일 예측 전 마지막 데이터의 시간)와 같은지 비교
+# 만약 다르다면, DynamoDB에 새로운 데이터가 있으니, DynamoDB Query 실행
+# 만약 같다면, DynamoDB Query를 할 필요가 없으니, MongoDB Data만 보내줌.
+@app.post("/check_db")
+async def check_db(request: UserEmailRequest):
+    user_email = request.user_email
+    
+    if len(prediction_collection.find_one()) == 0:
+        # 해당 사용자의 데이터가 MongoDB에 없을 경우
+        mongo_new_data = query_latest_heart_rate_data(user_email)
+        mongo_new_df = create_dataframe(mongo_new_data)
+        
+        mongo_new_forecast = predict_heart_rate(mongo_new_df)
+        save_prediction_to_mongodb(user_email, mongo_new_forecast)
+        return {'message': '데이터 저장 완료'}
+    
+    datetime_last = prediction_collection.find()[len(prediction_collection.find_one())-1]['data'][-4321]['ds']
+    last_date = datetime_last.year + '-' + datetime_last.month + '-' + datetime_last.day + ' ' + datetime_last.hour + ':' + datetime_last.minute + ':' + datetime_last.second
+    
+    if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
+        # 새로 동기화된 데이터가 DynamoDB에 없을 경우
+        return {'message': '새로운 데이터가 없습니다.'}
+    else:
+        # 새로 동기화된 데이터가 DynamoDB에 있을 경우..
+        is_sync_new_data = query_latest_heart_rate_data(user_email)
+        sync_new_df = create_dataframe(is_sync_new_data)
+        
+        snyc_new_forecast = predict_heart_rate(sync_new_df)
+        save_prediction_to_mongodb(user_email, snyc_new_forecast)
+        return {"message": "데이터 저장 완료"}
+        
+
+# @app.post("/analyze_and_predict")
+# async def analyze_and_predict(request: UserEmailRequest):
+#     user_email = request.user_email
+#     items = query_latest_heart_rate_data(user_email)
+#     if not items:
+#         raise HTTPException(status_code=404, detail="유저 정보 없음")
+#     processed_data = process_heart_rate_data(items)
+#     if not processed_data:
+#         raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
+    
+#     df = pd.DataFrame(processed_data)
+#     df['ds'] = pd.to_datetime(df['ds'])
+    
+#     forecast = predict_heart_rate(df)
+#     save_prediction_to_mongodb(user_email, forecast)
+#     return {"message": "분석 끝 예측 데이터 저장", "데이터 길이": len(df)}
 
   
 if __name__ == "__main__":
