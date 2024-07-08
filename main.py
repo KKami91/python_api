@@ -190,12 +190,12 @@ async def get_prediction_data(user_email: str, prediction_date: str):
     try:
         # URL 디코딩 및 ISO 형식 파싱
         print(f'prediction_date : {prediction_date}')
-        decoded_date = unquote(prediction_date)
-        print(f'decoded_date : {decoded_date}')
-        date = datetime.fromisoformat(decoded_date)
-        print(f'date : {date}')
+        #decoded_date = unquote(prediction_date)
+        #print(f'decoded_date : {decoded_date}')
+        #date = datetime.fromisoformat(decoded_date)
+        #print(f'date : {date}')
         
-        prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": date})
+        prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": prediction_date})
         print(f'prediction : {prediction}')
         if prediction:
             print('in True')
