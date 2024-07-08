@@ -220,7 +220,7 @@ def create_dataframe(json_data):
 async def check_db(request: UserEmailRequest):
     user_email = request.user_email
     
-    if len(prediction_collection.find_one()) == 0:
+    if prediction_collection.find_one() == None:
         # 해당 사용자의 데이터가 MongoDB에 없을 경우
         mongo_new_data = query_latest_heart_rate_data(user_email)
         mongo_new_df = create_dataframe(mongo_new_data)
