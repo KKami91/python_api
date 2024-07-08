@@ -164,7 +164,7 @@ def save_prediction_to_mongodb(user_email: str, prediction_data):
     korea_time = datetime.now() + timedelta(hours=9)
     prediction_collection.insert_one({
         "user_email": user_email,
-        "prediction_date": str(korea_time.year) + '-' + str(korea_time.month) + '-' + str(korea_time.day) + ' ' + str(korea_time.hour) + ':' + str(korea_time.minute) + ':' + str(korea_time.second),
+        "prediction_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
         "data": prediction_data.to_dict('records')
     })
 
@@ -183,7 +183,7 @@ def predict_heart_rate(df):
 @app.get("/prediction_dates/{user_email}")
 async def get_prediction_dates(user_email: str):
     dates = prediction_collection.distinct("prediction_date", {"user_email": user_email})
-    return {"dates": [date.isoformat() for date in dates]}
+    return {"dates": [date for date in dates]}
 
 @app.get("/prediction_data/{user_email}/{prediction_date}")
 async def get_prediction_data(user_email: str, prediction_date: str):
