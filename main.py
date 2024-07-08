@@ -164,7 +164,7 @@ def save_prediction_to_mongodb(user_email: str, prediction_data):
     korea_time = datetime.now() + timedelta(hours=9)
     prediction_collection.insert_one({
         "user_email": user_email,
-        "prediction_date": korea_time.year + '-' + korea_time.month + '-' + korea_time.day + ' ' + korea_time.hour + ':' + korea_time.minute + ':' + korea_time.second,
+        "prediction_date": str(korea_time.year) + '-' + str(korea_time.month) + '-' + str(korea_time.day) + ' ' + str(korea_time.hour) + ':' + str(korea_time.minute) + ':' + str(korea_time.second),
         "data": prediction_data.to_dict('records')
     })
 
