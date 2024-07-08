@@ -236,7 +236,9 @@ async def check_db(request: UserEmailRequest):
         save_prediction_to_mongodb(user_email, mongo_new_forecast)
         return {'message': '데이터 저장 완료'}
     
-    datetime_last = prediction_collection.find()[prediction_collection.count()-1]['data'][-4321]['ds']
+    last_data = list(prediction_collection.find({"user_email": user_email}))[-1]
+    user_data_length = len(last_data)
+    datetime_last = last_data[user_data_length - 1]['data'][-4321]['ds']
     last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
     
     if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
