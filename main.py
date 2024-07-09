@@ -163,6 +163,11 @@ def process_heart_rate_data(items):
 
 def save_prediction_to_mongodb(user_email: str, prediction_data):
     korea_time = datetime.now() + timedelta(hours=9)
+    
+    print('in save prediction to mongodb')
+    #print('in save prediction to mongodb prediction_data : ', prediction_data.to_dict)
+    print('in save prediction to mongodb prediction_data : ', prediction_data.to_dict('records'))
+    
     prediction_collection.insert_one({
         "user_email": user_email,
         "prediction_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
@@ -183,8 +188,12 @@ def predict_heart_rate(df):
     
     df['ds'] = pd.to_datetime(df['ds'])
     forecast['ds'] = pd.to_datetime(df['ds'])
+    print('df : ', df)
     
     concat_df = forecast[['ds', 'yhat']].merge(df[['ds', 'y']], on='ds', how='left')
+    print('concat_df : ', concat_df)
+    concat_df = concat_df.where(pd.notnull(concat_df), None)
+    print('pd where fin')
     #return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
     return concat_df
 
@@ -241,6 +250,9 @@ async def check_db(request: UserEmailRequest):
         mongo_new_df = create_dataframe(mongo_new_data)
         
         mongo_new_forecast = predict_heart_rate(mongo_new_df)
+        
+        print('in no one mongo_new_forecast : ', mongo_new_forecast)
+        
         save_prediction_to_mongodb(user_email, mongo_new_forecast)
         return {'message': '데이터 저장 완료'}
     
@@ -253,12 +265,21 @@ async def check_db(request: UserEmailRequest):
         return {'message': '새로운 데이터가 없습니다.'}
     else:
         # 새로 동기화된 데이터가 DynamoDB에 있을 경우..
-        is_sync_new_data = query_latest_heart_rate_data(user_email)
-        sync_new_df = create_dataframe(is_sync_new_data)
+        # is_sync_new_data = query_latest_heart_rate_data(user_email)
+        # sync_new_df = create_dataframe(is_sync_new_data)
         
-        snyc_new_forecast = predict_heart_rate(sync_new_df)
-        save_prediction_to_mongodb(user_email, snyc_new_forecast)
-        return {"message": "데이터 저장 완료"}
+        # snyc_new_forecast = predict_heart_rate(sync_new_df)
+        # save_prediction_to_mongodb(user_email, snyc_new_forecast)
+        # return {"message": "데이터 저장 완료"}
+        mongo_new_data = query_latest_heart_rate_data(user_email)
+        mongo_new_df = create_dataframe(mongo_new_data)
+        
+        mongo_new_forecast = predict_heart_rate(mongo_new_df)
+        
+        print('in no one mongo_new_forecast : ', mongo_new_forecast)
+        
+        save_prediction_to_mongodb(user_email, mongo_new_forecast)
+        return {'message': '데이터 저장 완료'}
         
 
 # @app.post("/analyze_and_predict")
