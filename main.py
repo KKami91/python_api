@@ -184,19 +184,23 @@ def predict_heart_rate(df):
     model.fit(df)
     future = model.make_future_dataframe(periods=60*24*3, freq='min')
     forecast = model.predict(future)
-    #forecast['yhat'] = np.round(forecast['yhat'], 1)
     
-    # df['ds'] = pd.to_datetime(df['ds'])
-    # forecast['ds'] = pd.to_datetime(df['ds'])
-    #print('df : ', df)
+    forecast['yhat'] = np.round(forecast['yhat'], 1)
+    df['ds'] = pd.to_datetime(df['ds'])
+    
+    concat_df = forecast[['ds', 'yhat']]
+    concat_df = concat_df.merge(df[['ds', 'y']], on='ds', how='left')
     
     #concat_df = forecast[['ds', 'yhat']].merge(df[['ds', 'y']], on='ds', how='left')
     #print('concat_df : ', concat_df)
     # concat_df = concat_df.where(pd.notnull(concat_df), None)
     # concat_df['ds'] = concat_df['ds'].astype(str)
     print('pd where fin')
-    return forecast[['ds', 'yhat']]
-    #return concat_df
+    print('concat df ds : ', concat_df['ds'][-100:])
+    print('concat df yhat : ', concat_df['yhat'][-100:])
+    print('concat df y : ', concat_df['y'][-100:])
+    # return forecast[['ds', 'yhat']]
+    return concat_df
 
 @app.get("/prediction_dates/{user_email}")
 async def get_prediction_dates(user_email: str):
