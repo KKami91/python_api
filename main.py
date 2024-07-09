@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from pymongo import MongoClient
 from urllib.parse import unquote
 import numpy as np
-
+import math
 
 app = FastAPI()
 load_dotenv()
@@ -163,10 +163,23 @@ def process_heart_rate_data(items):
 
 def save_prediction_to_mongodb(user_email: str, prediction_data):
     korea_time = datetime.now() + timedelta(hours=9)
-    data_dict = prediction_data.where(pd.notnull(prediction_data), None).to_dict('records')
+    #data_dict = prediction_data.where(pd.notnull(prediction_data), None).to_dict('records')
     print('in save prediction to mongodb')
     #print('in save prediction to mongodb prediction_data : ', prediction_data.to_dict)
     print('in save prediction to mongodb prediction_data : ', prediction_data.to_dict('records'))
+    
+    print('in save prediction to mongodb')
+    
+    # NaN, inf 값을 None으로 변환하고 float 값을 문자열로 변환
+    def clean_value(v):
+        if isinstance(v, float):
+            if math.isnan(v) or math.isinf(v):
+                return None
+            return str(round(v, 3))  # 소수점 3자리까지 반올림하고 문자열로 변환
+        return v
+
+    # DataFrame의 모든 열에 clean_value 함수 적용
+    data_dict = prediction_data.applymap(clean_value).to_dict('records')
     
     prediction_collection.insert_one({
         "user_email": user_email,
@@ -210,24 +223,42 @@ async def get_prediction_dates(user_email: str):
 @app.get("/prediction_data/{user_email}/{prediction_date}")
 async def get_prediction_data(user_email: str, prediction_date: str):
     try:
-        # URL 디코딩 및 ISO 형식 파싱
-        # print(f'prediction_date : {prediction_date}')
-        # decoded_date = unquote(prediction_date)
-        # print(f'decoded_date : {decoded_date}')
-        # date = datetime.fromisoformat(decoded_date)
-        # print(f'date : {date}')
-        # print(f'user_email : {user_email}')
-        
         prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": prediction_date})
         print(f'prediction : {prediction}')
         if prediction:
             print('in True')
-            return {"data": prediction["data"]}
+            # NaN 값을 None으로 변환
+            def clean_nan(item):
+                return {k: (None if v == "NaN" else v) for k, v in item.items()}
+            
+            cleaned_data = [clean_nan(item) for item in prediction["data"]]
+            return {"data": cleaned_data}
         else:
             print('in False')
             raise HTTPException(status_code=404, detail="Prediction data not found")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
+# @app.get("/prediction_data/{user_email}/{prediction_date}")
+# async def get_prediction_data(user_email: str, prediction_date: str):
+#     try:
+#         # URL 디코딩 및 ISO 형식 파싱
+#         # print(f'prediction_date : {prediction_date}')
+#         # decoded_date = unquote(prediction_date)
+#         # print(f'decoded_date : {decoded_date}')
+#         # date = datetime.fromisoformat(decoded_date)
+#         # print(f'date : {date}')
+#         # print(f'user_email : {user_email}')
+        
+#         prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": prediction_date})
+#         print(f'prediction : {prediction}')
+#         if prediction:
+#             print('in True')
+#             return {"data": prediction["data"]}
+#         else:
+#             print('in False')
+#             raise HTTPException(status_code=404, detail="Prediction data not found")
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="Invalid date format")
 
 
 def create_dataframe(json_data):
