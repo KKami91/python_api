@@ -175,7 +175,7 @@ def save_prediction_to_mongodb(user_email: str, prediction_data):
         if isinstance(v, float):
             if math.isnan(v) or math.isinf(v):
                 return None
-            return str(round(v, 3))  # 소수점 3자리까지 반올림하고 문자열로 변환
+            return round(v, 1)  # 소수점 3자리까지 반올림하고 문자열로 변환
         return v
 
     # DataFrame의 모든 열에 clean_value 함수 적용
@@ -227,12 +227,15 @@ async def get_prediction_data(user_email: str, prediction_date: str):
         print(f'prediction : {prediction}')
         if prediction:
             print('in True')
-            # NaN 값을 None으로 변환
-            def clean_nan(item):
-                return {k: (None if v == "NaN" else v) for k, v in item.items()}
+            def convert_types(item):
+                return {
+                    'ds': item['ds'],
+                    'yhat': float(item['yhat']) if item['yhat'] is not None else None,
+                    'y': int(item['y']) if item['y'] is not None else None
+                }
             
-            cleaned_data = [clean_nan(item) for item in prediction["data"]]
-            return {"data": cleaned_data}
+            converted_data = [convert_types(item) for item in prediction["data"]]
+            return {"data": converted_data}
         else:
             print('in False')
             raise HTTPException(status_code=404, detail="Prediction data not found")
