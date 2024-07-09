@@ -186,8 +186,8 @@ def predict_heart_rate(df):
     forecast = model.predict(future)
     #forecast['yhat'] = np.round(forecast['yhat'], 1)
     
-    df['ds'] = pd.to_datetime(df['ds'])
-    forecast['ds'] = pd.to_datetime(df['ds'])
+    # df['ds'] = pd.to_datetime(df['ds'])
+    # forecast['ds'] = pd.to_datetime(df['ds'])
     #print('df : ', df)
     
     #concat_df = forecast[['ds', 'yhat']].merge(df[['ds', 'y']], on='ds', how='left')
