@@ -14,6 +14,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from urllib.parse import unquote
+import numpy as np
 
 
 app = FastAPI()
@@ -177,8 +178,15 @@ def predict_heart_rate(df):
                     interval_width=0.95)
     model.fit(df)
     future = model.make_future_dataframe(periods=60*24*3, freq='min')
-    forecast = model.predict(future)  
-    return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+    forecast = model.predict(future)
+    forecast['yhat'] = np.round(forecast['yhat'], 1)
+    
+    df['ds'] = pd.to_datetime(df['ds'])
+    forecast['ds'] = pd.to_datetime(df['ds'])
+    
+    concat_df = forecast[['ds', 'yhat']].merge(df[['ds', 'y']], on='ds', how='left')
+    #return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+    return concat_df
 
 @app.get("/prediction_dates/{user_email}")
 async def get_prediction_dates(user_email: str):
