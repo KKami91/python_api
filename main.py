@@ -193,6 +193,7 @@ def predict_heart_rate(df):
     concat_df = forecast[['ds', 'yhat']].merge(df[['ds', 'y']], on='ds', how='left')
     print('concat_df : ', concat_df)
     concat_df = concat_df.where(pd.notnull(concat_df), None)
+    concat_df['ds'] = concat_df['ds'].astype(str)
     print('pd where fin')
     #return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
     return concat_df
