@@ -380,10 +380,10 @@ def preprocess_analysis(df):
     #res_dict['lf'] = lf
     #res_dict['hf'] = hf
     
-    nk_df = pd.DataFrame(res_dict)
-    nk_df['ds'] = pd.to_datetime(nk_df['ds'])
+    analysis_df = pd.DataFrame(res_dict)
+    analysis_df['ds'] = pd.to_datetime(analysis_df['ds'])
     
-    return nk_df
+    return analysis_df
 
     
     
@@ -393,17 +393,15 @@ async def check_db_analysis(request: UserEmailRequest):
     user_email = request.user_email
     
     if analysis_collection.find_one({"user_email": user_email}) == None:
-        print('In Analysis Check DB : ', user_email)
+        #print('In Analysis Check DB : ', user_email)
         mongo_new_data_analysis = query_latest_heart_rate_data(user_email)
-        print('In Analysis Check DB After query_latest_hrv_data: ', mongo_new_data_analysis)
+        #print('In Analysis Check DB After query_latest_hrv_data: ', mongo_new_data_analysis)
         mongo_new_df_analysis = create_dataframe(mongo_new_data_analysis)
-        print('In Analysis Check DB After create_dataframe: ', mongo_new_df_analysis)
-        mongo_new_preprocess_analysis = preprocess_analysis(mongo_new_df_analysis)
-        print('In Analysis Check DB After preprocess_analysis: ', mongo_new_preprocess_analysis)
-        mongo_new_nk_analysis = preprocess_analysis(mongo_new_preprocess_analysis)
-        print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
+        #print('In Analysis Check DB After create_dataframe: ', mongo_new_df_analysis)
+        mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df_analysis)
+        #print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
                 
-        save_prediction_to_mongodb(user_email, mongo_new_nk_analysis)
+        save_prediction_to_mongodb(user_email, mongo_new_hrv_analysis)
         return {'message': '데이터 저장 완료'}  
         
     last_data = list(prediction_collection.find({"user_email": user_email}))[-1]
@@ -415,15 +413,16 @@ async def check_db_analysis(request: UserEmailRequest):
         return {'message': '새로운 데이터가 없습니다.'}
     else:
         # 새로 동기화된 데이터가 DynamoDB에 있을 경우..
+        #print('In Analysis Check DB : ', user_email)
         mongo_new_data_analysis = query_latest_heart_rate_data(user_email)
+        #print('In Analysis Check DB After query_latest_hrv_data: ', mongo_new_data_analysis)
         mongo_new_df_analysis = create_dataframe(mongo_new_data_analysis)
-        
-        mongo_new_preprocess_analysis = preprocess_analysis(mongo_new_df_analysis)
-        
-        mongo_new_nk_analysis = preprocess_analysis(mongo_new_preprocess_analysis)
+        #print('In Analysis Check DB After create_dataframe: ', mongo_new_df_analysis)
+        mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df_analysis)
+        #print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
                 
-        save_prediction_to_mongodb(user_email, mongo_new_nk_analysis)
-        return {'message': '데이터 저장 완료'}       
+        save_prediction_to_mongodb(user_email, mongo_new_hrv_analysis)
+        return {'message': '데이터 저장 완료'}    
 
 # DynamoDB의 마지막 데이터(시간)과 저장된 MongoDB의 -4321번째(3일 예측 전 마지막 데이터의 시간)와 같은지 비교
 # 만약 다르다면, DynamoDB에 새로운 데이터가 있으니, DynamoDB Query 실행
