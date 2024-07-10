@@ -314,8 +314,8 @@ def preprocess_analysis(df):
     
     for i in range(len(peaks_list)):
         temp_nk = nk.hrv(peaks_list[i])
-        sdnn.append(temp_nk['HRV_SDNN'])
-        rmssd.append(temp_nk['HRV_RMSSD'])
+        sdnn.append(temp_nk['HRV_SDNN'][0])
+        rmssd.append(temp_nk['HRV_RMSSD'][0])
         #lf.append(temp_nk['HRV_LF'])
         #hf.append(temp_nk['HRV_HF'])
     
