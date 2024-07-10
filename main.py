@@ -333,7 +333,7 @@ def preprocess_analysis(df):
     
     
 
-@app.post("check_db_analysis")
+@app.post("/check_db_analysis")
 async def check_db_analysis(request: UserEmailRequest):
     user_email = request.user_email
     
