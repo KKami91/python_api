@@ -218,6 +218,25 @@ def predict_heart_rate(df):
     concat_df = concat_df.where(pd.notnull(concat_df), None)
     return concat_df
 
+
+@app.get("/analysis_dates/{user_email}")
+async def get_analysis_dates(user_email: str):
+    dates = analysis_collection.distinct("analysis_dates", {"user_email": user_email})
+    return {"dates": [date for date in dates]}
+
+@app.get("/analysis_data/{user_email}/{analysis_date}")
+async def get_analysis_data(user_email: str, analysis_date: str):
+    try:
+        analysis = prediction_collection.find_one({"user_email": user_email, "analysis_date": analysis_date})
+        if analysis:
+            print('in True')         
+            return {"data": analysis['data']}
+        else:
+            raise HTTPException(status_code=404, detail="Analysis data not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format")
+
+
 @app.get("/prediction_dates/{user_email}")
 async def get_prediction_dates(user_email: str):
     dates = prediction_collection.distinct("prediction_date", {"user_email": user_email})
