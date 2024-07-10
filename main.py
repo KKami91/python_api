@@ -167,10 +167,20 @@ def save_analysis_to_mongodb(user_email: str, analysis_data):
     
     sdnn_rmssd = analysis_data.to_dict('records')
     
+    # Clean the data before saving
+    cleaned_data = []
+    for item in sdnn_rmssd:
+        cleaned_item = {
+            'ds': item['ds'],
+            'sdnn': clean_value(item['sdnn']),
+            'rmssd': clean_value(item['rmssd'])
+        }
+        cleaned_data.append(cleaned_item)
+    
     analysis_collection.insert_one({
         "user_email": user_email,
         "analysis_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
-        "data": sdnn_rmssd
+        "data": cleaned_data
     })
 
 def save_prediction_to_mongodb(user_email: str, prediction_data):
@@ -236,8 +246,17 @@ async def get_analysis_data(user_email: str, analysis_date: str):
         analysis = analysis_collection.find_one({"user_email": user_email, "analysis_date": analysis_date})
         print('In Get Analysis Data -> In Try analysis : ', analysis)
         if analysis:
-            print('in True')         
-            return {"data": analysis['data']}
+            print('in True')
+            # Clean the data before sending
+            cleaned_data = []
+            for item in analysis['data']:
+                cleaned_item = {
+                    'ds': item['ds'],
+                    'sdnn': clean_value(item['sdnn']),
+                    'rmssd': clean_value(item['rmssd'])
+                }
+                cleaned_data.append(cleaned_item)
+            return {"data": cleaned_data}
         else:
             print('Why??')
             raise HTTPException(status_code=404, detail="Analysis data not found")
@@ -341,6 +360,13 @@ def get_time_domain_features(nn_intervals) -> dict:
 
     return time_domain_features
 
+def clean_value(v):
+    if pd.isna(v) or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
+        return None
+    if isinstance(v, float):
+        return round(v, 1)
+    return v
+
 def preprocess_analysis(df):
     # 1시간 단위로 데이터 변경
     df['year'] = df['ds'].dt.year
@@ -352,7 +378,7 @@ def preprocess_analysis(df):
     df['ds_rounded'] = df['ds'].dt.floor('h')
     
     def divide_by_60000(y_list):
-        return [np.round((60000 / y),1) for y in y_list]
+        return [np.round((60000 / y), 1) for y in y_list if y != 0]  # Avoid division by zero
     
     dict_temp = df.groupby('ds_rounded')['y'].apply(lambda x: divide_by_60000(x.tolist())).to_dict()
 
@@ -368,25 +394,22 @@ def preprocess_analysis(df):
     for value in dict_temp.values():
         value_list.append(value)
         
-        
     res_dict = {}
     sdnn = []
     rmssd = []
-    #lf = []
-    #hf = []
     
     for i in range(len(value_list)):
-        get_domain_hrv = get_time_domain_features(value_list[i])
-        sdnn.append(np.round(get_domain_hrv['sdnn'],1))
-        rmssd.append(np.round(get_domain_hrv['rmssd'],1))
-        #lf.append(temp_nk['HRV_LF'])
-        #hf.append(temp_nk['HRV_HF'])
+        if len(value_list[i]) > 1:  # Ensure there's enough data to calculate SDNN and RMSSD
+            get_domain_hrv = get_time_domain_features(value_list[i])
+            sdnn.append(clean_value(get_domain_hrv['sdnn']))
+            rmssd.append(clean_value(get_domain_hrv['rmssd']))
+        else:
+            sdnn.append(None)
+            rmssd.append(None)
     
     res_dict['ds'] = key_list
     res_dict['sdnn'] = sdnn
     res_dict['rmssd'] = rmssd
-    #res_dict['lf'] = lf
-    #res_dict['hf'] = hf
     
     analysis_df = pd.DataFrame(res_dict)
     analysis_df['ds'] = pd.to_datetime(analysis_df['ds'])
