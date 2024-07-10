@@ -309,21 +309,21 @@ def preprocess_analysis(df):
     res_dict = {}
     sdnn = []
     rmssd = []
-    lf = []
-    hf = []
+    #lf = []
+    #hf = []
     
     for i in range(len(peaks_list)):
         temp_nk = nk.hrv(peaks_list[i])
         sdnn.append(temp_nk['HRV_SDNN'])
         rmssd.append(temp_nk['HRV_RMSSD'])
-        lf.append(temp_nk['HRV_LF'])
-        hf.append(temp_nk['HRV_HF'])
+        #lf.append(temp_nk['HRV_LF'])
+        #hf.append(temp_nk['HRV_HF'])
     
     res_dict['ds'] = key_list
     res_dict['sdnn'] = sdnn
     res_dict['rmssd'] = rmssd
-    res_dict['lf'] = lf
-    res_dict['hf'] = hf
+    #res_dict['lf'] = lf
+    #res_dict['hf'] = hf
     
     nk_df = pd.DataFrame(res_dict)
     nk_df['ds'] = pd.to_datetime(nk_df['ds'])
