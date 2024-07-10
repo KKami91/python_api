@@ -401,7 +401,7 @@ async def check_db_analysis(request: UserEmailRequest):
         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df_analysis)
         #print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
                 
-        save_prediction_to_mongodb(user_email, mongo_new_hrv_analysis)
+        save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis)
         return {'message': '데이터 저장 완료'}  
         
     last_data = list(prediction_collection.find({"user_email": user_email}))[-1]
@@ -421,7 +421,7 @@ async def check_db_analysis(request: UserEmailRequest):
         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df_analysis)
         #print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
                 
-        save_prediction_to_mongodb(user_email, mongo_new_hrv_analysis)
+        save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis)
         return {'message': '데이터 저장 완료'}    
 
 # DynamoDB의 마지막 데이터(시간)과 저장된 MongoDB의 -4321번째(3일 예측 전 마지막 데이터의 시간)와 같은지 비교
