@@ -223,7 +223,7 @@ def predict_heart_rate(df):
 
 @app.get("/analysis_dates/{user_email}")
 async def get_analysis_dates(user_email: str):
-    dates = analysis_collection.distinct("analysis_dates", {"user_email": user_email})
+    dates = analysis_collection.distinct("analysis_date", {"user_email": user_email})
     return {"dates": [date for date in dates]}
 
 @app.get("/analysis_data/{user_email}/{analysis_date}")
