@@ -338,6 +338,28 @@ async def check_db_analysis(request: UserEmailRequest):
     user_email = request.user_email
     
     if analysis_collection.find_one({"user_email": user_email}) == None:
+        print('In Analysis Check DB : ', user_email)
+        mongo_new_data_analysis = query_latest_heart_rate_data(user_email)
+        print('In Analysis Check DB After query_latest_hrv_data: ', mongo_new_data_analysis)
+        mongo_new_df_analysis = create_dataframe(mongo_new_data_analysis)
+        print('In Analysis Check DB After create_dataframe: ', mongo_new_df_analysis)
+        mongo_new_preprocess_analysis = preprocess_analysis(mongo_new_df_analysis)
+        print('In Analysis Check DB After preprocess_analysis: ', mongo_new_preprocess_analysis)
+        mongo_new_nk_analysis = preprocess_analysis(mongo_new_preprocess_analysis)
+        print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
+                
+        save_prediction_to_mongodb(user_email, mongo_new_nk_analysis)
+        return {'message': '데이터 저장 완료'}  
+        
+    last_data = list(prediction_collection.find({"user_email": user_email}))[-1]
+    datetime_last = last_data['data'][-4321]['ds']
+    last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
+    
+    if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
+        # 새로 동기화된 데이터가 DynamoDB에 없을 경우
+        return {'message': '새로운 데이터가 없습니다.'}
+    else:
+        # 새로 동기화된 데이터가 DynamoDB에 있을 경우..
         mongo_new_data_analysis = query_latest_heart_rate_data(user_email)
         mongo_new_df_analysis = create_dataframe(mongo_new_data_analysis)
         
@@ -346,8 +368,7 @@ async def check_db_analysis(request: UserEmailRequest):
         mongo_new_nk_analysis = preprocess_analysis(mongo_new_preprocess_analysis)
                 
         save_prediction_to_mongodb(user_email, mongo_new_nk_analysis)
-        
-        
+        return {'message': '데이터 저장 완료'}       
 
 # DynamoDB의 마지막 데이터(시간)과 저장된 MongoDB의 -4321번째(3일 예측 전 마지막 데이터의 시간)와 같은지 비교
 # 만약 다르다면, DynamoDB에 새로운 데이터가 있으니, DynamoDB Query 실행
