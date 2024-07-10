@@ -233,7 +233,7 @@ async def get_analysis_data(user_email: str, analysis_date: str):
     print('In Get Analysis email : ', user_email)
     try:
         print('In Get Analysis Data -> In Try')
-        analysis = prediction_collection.find_one({"user_email": user_email, "analysis_date": analysis_date})
+        analysis = analysis_collection.find_one({"user_email": user_email, "analysis_date": analysis_date})
         print('In Get Analysis Data -> In Try analysis : ', analysis)
         if analysis:
             print('in True')         
