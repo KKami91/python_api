@@ -165,10 +165,12 @@ def process_heart_rate_data(items):
 def save_analysis_to_mongodb(user_email: str, analysis_data):
     korea_time = datetime.now() + timedelta(hours=9)
     
+    sdnn_rmssd = analysis_data.to_dict('records')
+    
     analysis_collection.insert_one({
         "user_email": user_email,
         "analysis_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
-        "data": analysis_data
+        "data": sdnn_rmssd
     })
 
 def save_prediction_to_mongodb(user_email: str, prediction_data):
