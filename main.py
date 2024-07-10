@@ -170,7 +170,6 @@ def save_prediction_to_mongodb(user_email: str, prediction_data):
     
     print('in save prediction to mongodb')
     
-    # NaN, inf 값을 None으로 변환하고 float 값을 문자열로 변환
     def clean_value(v):
         if pd.isna(v) or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
             return None
@@ -181,11 +180,15 @@ def save_prediction_to_mongodb(user_email: str, prediction_data):
     # DataFrame의 모든 열에 clean_value 함수 적용
     data_dict = prediction_data.applymap(clean_value).to_dict('records')
     
+    # 최종 검사
     for item in data_dict:
         if 'yhat' in item and item['yhat'] is not None:
             item['yhat'] = float(item['yhat'])
-        if 'y' in item and item['y'] is not None:
-            item['y'] = int(item['y'])
+        if 'y' in item:
+            if item['y'] is not None and not pd.isna(item['y']):
+                item['y'] = int(item['y'])
+            else:
+                item['y'] = None
     
     prediction_collection.insert_one({
         "user_email": user_email,
