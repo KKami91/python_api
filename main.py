@@ -228,12 +228,18 @@ async def get_analysis_dates(user_email: str):
 
 @app.get("/analysis_data/{user_email}/{analysis_date}")
 async def get_analysis_data(user_email: str, analysis_date: str):
+    print('In Get Analysis Data')
+    print('In Get Analysis date : ', analysis_date)
+    print('In Get Analysis email : ', user_email)
     try:
+        print('In Get Analysis Data -> In Try')
         analysis = prediction_collection.find_one({"user_email": user_email, "analysis_date": analysis_date})
+        print('In Get Analysis Data -> In Try analysis : ', analysis)
         if analysis:
             print('in True')         
             return {"data": analysis['data']}
         else:
+            print('Why??')
             raise HTTPException(status_code=404, detail="Analysis data not found")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
