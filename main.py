@@ -16,6 +16,7 @@ from pymongo import MongoClient
 from urllib.parse import unquote
 import numpy as np
 import math
+import neurokit2 as nk
 
 app = FastAPI()
 load_dotenv()
@@ -50,6 +51,7 @@ MONGODB_URI = os.getenv('MONGODB_URI')
 client = MongoClient(MONGODB_URI)
 db = client.get_database("heart_rate_db")
 prediction_collection = db.prediction_results
+analysis_collection = db.analysis_results
 
 
 # 시간을 한국 시간으로 변형
@@ -158,17 +160,19 @@ def process_heart_rate_data(items):
                 'ds': converted_timestamp,
                 'y': int(item['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N'])
             })
-    print(f'In Process Heart Rate Data : {processed_data}')
     return processed_data
+
+def save_analysis_to_mongodb(user_email: str, analysis_data):
+    korea_time = datetime.now() + timedelta(hours=9)
+    
+    analysis_collection.insert_one({
+        "user_email": user_email,
+        "analysis_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
+        "data": analysis_data
+    })
 
 def save_prediction_to_mongodb(user_email: str, prediction_data):
     korea_time = datetime.now() + timedelta(hours=9)
-    #data_dict = prediction_data.where(pd.notnull(prediction_data), None).to_dict('records')
-    print('in save prediction to mongodb')
-    #print('in save prediction to mongodb prediction_data : ', prediction_data.to_dict)
-    print('in save prediction to mongodb prediction_data : ', prediction_data.to_dict('records'))
-    
-    print('in save prediction to mongodb')
     
     def clean_value(v):
         if pd.isna(v) or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
@@ -206,22 +210,12 @@ def predict_heart_rate(df):
     model.fit(df)
     future = model.make_future_dataframe(periods=60*24*3, freq='min')
     forecast = model.predict(future)
-    
-    # forecast['yhat'] = np.round(forecast['yhat'], 1)
+
     df['ds'] = pd.to_datetime(df['ds'])
     
     concat_df = forecast[['ds', 'yhat']]
     concat_df = concat_df.merge(df[['ds', 'y']], on='ds', how='left')
     concat_df = concat_df.where(pd.notnull(concat_df), None)
-    #concat_df = forecast[['ds', 'yhat']].merge(df[['ds', 'y']], on='ds', how='left')
-    #print('concat_df : ', concat_df)
-    # concat_df = concat_df.where(pd.notnull(concat_df), None)
-    # concat_df['ds'] = concat_df['ds'].astype(str)
-    print('pd where fin')
-    print('concat df ds : ', concat_df['ds'][-100:])
-    print('concat df yhat : ', concat_df['yhat'][-100:])
-    print('concat df y : ', concat_df['y'][-100:])
-    # return forecast[['ds', 'yhat']]
     return concat_df
 
 @app.get("/prediction_dates/{user_email}")
@@ -233,7 +227,6 @@ async def get_prediction_dates(user_email: str):
 async def get_prediction_data(user_email: str, prediction_date: str):
     try:
         prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": prediction_date})
-        print(f'prediction : {prediction}')
         if prediction:
             print('in True')
             def convert_types(item):
@@ -246,32 +239,9 @@ async def get_prediction_data(user_email: str, prediction_date: str):
             converted_data = [convert_types(item) for item in prediction["data"]]
             return {"data": converted_data}
         else:
-            print('in False')
             raise HTTPException(status_code=404, detail="Prediction data not found")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
-# @app.get("/prediction_data/{user_email}/{prediction_date}")
-# async def get_prediction_data(user_email: str, prediction_date: str):
-#     try:
-#         # URL 디코딩 및 ISO 형식 파싱
-#         # print(f'prediction_date : {prediction_date}')
-#         # decoded_date = unquote(prediction_date)
-#         # print(f'decoded_date : {decoded_date}')
-#         # date = datetime.fromisoformat(decoded_date)
-#         # print(f'date : {date}')
-#         # print(f'user_email : {user_email}')
-        
-#         prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": prediction_date})
-#         print(f'prediction : {prediction}')
-#         if prediction:
-#             print('in True')
-#             return {"data": prediction["data"]}
-#         else:
-#             print('in False')
-#             raise HTTPException(status_code=404, detail="Prediction data not found")
-#     except ValueError:
-#         raise HTTPException(status_code=400, detail="Invalid date format")
-
 
 def create_dataframe(json_data):
     if not json_data:
@@ -285,21 +255,94 @@ def create_dataframe(json_data):
     
     return df
 
+
+def preprocess_analysis(df):
+    # 1시간 단위로 데이터 변경
+    df['year'] = df['ds'].dt.year
+    df['month'] = df['ds'].dt.month
+    df['day'] = df['ds'].dt.day
+    df['hour'] = df['hour'].dt.hour
+    df['minute'] = df['minute'].dt.minute
+    
+    df['ds_rounded'] = df['ds'].dt.floor('h')
+    
+    def divide_by_60000(y_list):
+        return [np.round((60000 / y),1) for y in y_list]
+    
+    dict_temp = df.groupby('ds_rounded')['y'].apply(lambda x: divide_by_60000(x.tolist())).to_dict()
+
+    # 키를 문자열 형식으로 변환
+    dict_temp = {str(k): v for k, v in dict_temp.items()}
+    
+    key_list = []
+    value_list = []
+    
+    for key in dict_temp.keys():
+        key_list.append(key)
+        
+    for value in dict_temp.values():
+        value_list.append(value)
+        
+    peaks_list = []
+    for i in range(len(value_list)):
+        peaks_list.append(nk.intervals_to_peaks(value_list[i]))
+        
+    res_dict = {}
+    sdnn = []
+    rmssd = []
+    lf = []
+    hf = []
+    
+    for i in range(len(peaks_list)):
+        temp_nk = nk.hrv(peaks_list[i])
+        sdnn.append(temp_nk['HRV_SDNN'])
+        rmssd.append(temp_nk['HRV_RMSSD'])
+        lf.append(temp_nk['HRV_LF'])
+        hf.append(temp_nk['HRV_HF'])
+    
+    res_dict['ds'] = key_list
+    res_dict['sdnn'] = sdnn
+    res_dict['rmssd'] = rmssd
+    res_dict['lf'] = lf
+    res_dict['hf'] = hf
+    
+    nk_df = pd.DataFrame(res_dict)
+    nk_df['ds'] = pd.to_datetime(nk_df['ds'])
+    
+    return nk_df
+
+    
+    
+
+@app.post("check_db_analysis")
+async def check_db_analysis(request: UserEmailRequest):
+    user_email = request.user_email
+    
+    if analysis_collection.find_one({"user_email": user_email}) == None:
+        mongo_new_data_analysis = query_latest_heart_rate_data(user_email)
+        mongo_new_df_analysis = create_dataframe(mongo_new_data_analysis)
+        
+        mongo_new_preprocess_analysis = preprocess_analysis(mongo_new_df_analysis)
+        
+        mongo_new_nk_analysis = preprocess_analysis(mongo_new_preprocess_analysis)
+                
+        save_prediction_to_mongodb(user_email, mongo_new_nk_analysis)
+        
+        
+
 # DynamoDB의 마지막 데이터(시간)과 저장된 MongoDB의 -4321번째(3일 예측 전 마지막 데이터의 시간)와 같은지 비교
 # 만약 다르다면, DynamoDB에 새로운 데이터가 있으니, DynamoDB Query 실행
 # 만약 같다면, DynamoDB Query를 할 필요가 없으니, MongoDB Data만 보내줌.
-@app.post("/check_db")
-async def check_db(request: UserEmailRequest):
+@app.post("/check_db_predict")
+async def check_db_predict(request: UserEmailRequest):
     user_email = request.user_email
     
     if prediction_collection.find_one({"user_email": user_email}) == None:
         # 해당 사용자의 데이터가 MongoDB에 없을 경우
-        mongo_new_data = query_latest_heart_rate_data(user_email)
-        mongo_new_df = create_dataframe(mongo_new_data)
+        mongo_new_data_predict = query_latest_heart_rate_data(user_email)
+        mongo_new_df_predict = create_dataframe(mongo_new_data_predict)
         
-        mongo_new_forecast = predict_heart_rate(mongo_new_df)
-        
-        print('in no one mongo_new_forecast : ', mongo_new_forecast)
+        mongo_new_forecast = predict_heart_rate(mongo_new_df_predict)
         
         save_prediction_to_mongodb(user_email, mongo_new_forecast)
         return {'message': '데이터 저장 완료'}
@@ -313,41 +356,14 @@ async def check_db(request: UserEmailRequest):
         return {'message': '새로운 데이터가 없습니다.'}
     else:
         # 새로 동기화된 데이터가 DynamoDB에 있을 경우..
-        # is_sync_new_data = query_latest_heart_rate_data(user_email)
-        # sync_new_df = create_dataframe(is_sync_new_data)
+        mongo_new_data_predict = query_latest_heart_rate_data(user_email)
+        mongo_new_df_predict = create_dataframe(mongo_new_data_predict)
         
-        # snyc_new_forecast = predict_heart_rate(sync_new_df)
-        # save_prediction_to_mongodb(user_email, snyc_new_forecast)
-        # return {"message": "데이터 저장 완료"}
-        mongo_new_data = query_latest_heart_rate_data(user_email)
-        mongo_new_df = create_dataframe(mongo_new_data)
-        
-        mongo_new_forecast = predict_heart_rate(mongo_new_df)
-        
-        print('in no one mongo_new_forecast : ', mongo_new_forecast)
+        mongo_new_forecast = predict_heart_rate(mongo_new_df_predict)
         
         save_prediction_to_mongodb(user_email, mongo_new_forecast)
         return {'message': '데이터 저장 완료'}
         
-
-# @app.post("/analyze_and_predict")
-# async def analyze_and_predict(request: UserEmailRequest):
-#     user_email = request.user_email
-#     items = query_latest_heart_rate_data(user_email)
-#     if not items:
-#         raise HTTPException(status_code=404, detail="유저 정보 없음")
-#     processed_data = process_heart_rate_data(items)
-#     if not processed_data:
-#         raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
-    
-#     df = pd.DataFrame(processed_data)
-#     df['ds'] = pd.to_datetime(df['ds'])
-    
-#     forecast = predict_heart_rate(df)
-#     save_prediction_to_mongodb(user_email, forecast)
-#     return {"message": "분석 끝 예측 데이터 저장", "데이터 길이": len(df)}
-
-  
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
