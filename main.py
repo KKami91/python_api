@@ -280,8 +280,8 @@ def preprocess_analysis(df):
     df['year'] = df['ds'].dt.year
     df['month'] = df['ds'].dt.month
     df['day'] = df['ds'].dt.day
-    df['hour'] = df['hour'].dt.hour
-    df['minute'] = df['minute'].dt.minute
+    df['hour'] = df['ds'].dt.hour
+    df['minute'] = df['ds'].dt.minute
     
     df['ds_rounded'] = df['ds'].dt.floor('h')
     
