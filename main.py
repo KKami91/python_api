@@ -416,7 +416,7 @@ def preprocess_analysis(df):
     return analysis_df
 
     
-@app.post("check_db")
+@app.post("/check_db")
 async def check_db(request: UserEmailRequest):
     user_email = request.user_email
     input_date = datetime.now() + timedelta(hours=9)
