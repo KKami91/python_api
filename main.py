@@ -440,7 +440,7 @@ async def check_db(request: UserEmailRequest):
         
         return {'message': '데이터 저장 완료'}
     
-    last_data = list(analysis_collection.find({"user_email": user_email}))[-1] # 최신 데이터의 마지막 data를 선택
+    last_data = list(prediction_collection.find({"user_email": user_email}))[-1] # 최신 데이터의 마지막 data를 선택
     datetime_last = last_data['data'][-4321]['ds'] # 그 데이터의 예측값을 제외한 마지막 값
     last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
     
