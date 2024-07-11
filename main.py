@@ -420,14 +420,20 @@ def preprocess_analysis(df):
 async def check_db(request: UserEmailRequest):
     user_email = request.user_email
     input_date = datetime.now() + timedelta(hours=9)
-    
+    print(f'in check_db... {user_email}')
+    print(f'in check_db... {input_date}')
     # analysis, predict collection 동시에 처리하기에 하나로만 처리? 
     if prediction_collection.find_one({"user_email": user_email}) == None:
+        print('in none data')
         mongo_new_data = query_latest_heart_rate_data(user_email)
+        print(f'after query_latest_heart_rate_data: {mongo_new_data}')
         mongo_new_df = create_dataframe(mongo_new_data)
+        print(f'after create_dataframe: {mongo_new_df}')
         
         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
+        print(f'after preprocess_analysis: {mongo_new_hrv_analysis}')
         mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
+        print(f'after predict_heart_rate: {mongo_new_forecast}')
         
         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
         save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
