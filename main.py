@@ -162,8 +162,8 @@ def process_heart_rate_data(items):
             })
     return processed_data
 
-def save_analysis_to_mongodb(user_email: str, analysis_data):
-    korea_time = datetime.now() + timedelta(hours=9)
+def save_analysis_to_mongodb(user_email: str, analysis_data, input_date):
+    korea_time = input_date
     
     sdnn_rmssd = analysis_data.to_dict('records')
     
@@ -183,8 +183,8 @@ def save_analysis_to_mongodb(user_email: str, analysis_data):
         "data": cleaned_data
     })
 
-def save_prediction_to_mongodb(user_email: str, prediction_data):
-    korea_time = datetime.now() + timedelta(hours=9)
+def save_prediction_to_mongodb(user_email: str, prediction_data, input_date):
+    korea_time = input_date
     
     def clean_value(v):
         if pd.isna(v) or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
@@ -416,77 +416,119 @@ def preprocess_analysis(df):
     return analysis_df
 
     
-    
-
-@app.post("/check_db_analysis")
-async def check_db_analysis(request: UserEmailRequest):
+@app.post("check_db")
+async def check_db(request: UserEmailRequest):
     user_email = request.user_email
+    input_date = datetime.now() + timedelta(hours=9)
     
-    if analysis_collection.find_one({"user_email": user_email}) == None:
-        #print('In Analysis Check DB : ', user_email)
-        mongo_new_data_analysis = query_latest_heart_rate_data(user_email)
-        #print('In Analysis Check DB After query_latest_hrv_data: ', mongo_new_data_analysis)
-        mongo_new_df_analysis = create_dataframe(mongo_new_data_analysis)
-        #print('In Analysis Check DB After create_dataframe: ', mongo_new_df_analysis)
-        mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df_analysis)
-        #print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
-                
-        save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis)
-        return {'message': '데이터 저장 완료'}  
-        
-    last_data = list(prediction_collection.find({"user_email": user_email}))[-1]
-    datetime_last = last_data['data'][-4321]['ds']
-    last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
-    
-    if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
-        # 새로 동기화된 데이터가 DynamoDB에 없을 경우
-        return {'message': '새로운 데이터가 없습니다.'}
-    else:
-        # 새로 동기화된 데이터가 DynamoDB에 있을 경우..
-        #print('In Analysis Check DB : ', user_email)
-        mongo_new_data_analysis = query_latest_heart_rate_data(user_email)
-        #print('In Analysis Check DB After query_latest_hrv_data: ', mongo_new_data_analysis)
-        mongo_new_df_analysis = create_dataframe(mongo_new_data_analysis)
-        #print('In Analysis Check DB After create_dataframe: ', mongo_new_df_analysis)
-        mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df_analysis)
-        #print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
-                
-        save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis)
-        return {'message': '데이터 저장 완료'}    
-
-# DynamoDB의 마지막 데이터(시간)과 저장된 MongoDB의 -4321번째(3일 예측 전 마지막 데이터의 시간)와 같은지 비교
-# 만약 다르다면, DynamoDB에 새로운 데이터가 있으니, DynamoDB Query 실행
-# 만약 같다면, DynamoDB Query를 할 필요가 없으니, MongoDB Data만 보내줌.
-@app.post("/check_db_predict")
-async def check_db_predict(request: UserEmailRequest):
-    user_email = request.user_email
-    
+    # analysis, predict collection 동시에 처리하기에 하나로만 처리? 
     if prediction_collection.find_one({"user_email": user_email}) == None:
-        # 해당 사용자의 데이터가 MongoDB에 없을 경우
-        mongo_new_data_predict = query_latest_heart_rate_data(user_email)
-        mongo_new_df_predict = create_dataframe(mongo_new_data_predict)
+        mongo_new_data = query_latest_heart_rate_data(user_email)
+        mongo_new_df = create_dataframe(mongo_new_data)
         
-        mongo_new_forecast = predict_heart_rate(mongo_new_df_predict)
+        mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
+        mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
         
-        save_prediction_to_mongodb(user_email, mongo_new_forecast)
+        save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
+        save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
+        
         return {'message': '데이터 저장 완료'}
     
-    last_data = list(prediction_collection.find({"user_email": user_email}))[-1]
-    datetime_last = last_data['data'][-4321]['ds']
+    last_data = list(analysis_collection.find({"user_email": user_email}))[-1] # 최신 데이터의 마지막 data를 선택
+    datetime_last = last_data['data'][-4321]['ds'] # 그 데이터의 예측값을 제외한 마지막 값
     last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
     
+    # DynamoDB에 마지막 데이터와 collection에 -4321번째의 데이터가 같다면 최대 40000개의 query를 하지 않음
     if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
-        # 새로 동기화된 데이터가 DynamoDB에 없을 경우
         return {'message': '새로운 데이터가 없습니다.'}
+    # 만약 다르다면 : 새로 동기화된 데이터가 있다면..
     else:
-        # 새로 동기화된 데이터가 DynamoDB에 있을 경우..
-        mongo_new_data_predict = query_latest_heart_rate_data(user_email)
-        mongo_new_df_predict = create_dataframe(mongo_new_data_predict)
+        mongo_new_data = query_latest_heart_rate_data(user_email)
+        mongo_new_df = create_dataframe(mongo_new_data)
         
-        mongo_new_forecast = predict_heart_rate(mongo_new_df_predict)
+        mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
+        mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
         
-        save_prediction_to_mongodb(user_email, mongo_new_forecast)
+        save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
+        save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
+        
         return {'message': '데이터 저장 완료'}
+            
+    
+        
+    
+
+
+# @app.post("/check_db_analysis")
+# async def check_db_analysis(request: UserEmailRequest):
+#     user_email = request.user_email
+    
+#     if analysis_collection.find_one({"user_email": user_email}) == None:
+#         #print('In Analysis Check DB : ', user_email)
+#         mongo_new_data_analysis = query_latest_heart_rate_data(user_email)
+#         #print('In Analysis Check DB After query_latest_hrv_data: ', mongo_new_data_analysis)
+#         mongo_new_df_analysis = create_dataframe(mongo_new_data_analysis)
+#         #print('In Analysis Check DB After create_dataframe: ', mongo_new_df_analysis)
+#         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df_analysis)
+#         #print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
+                
+#         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis)
+#         return {'message': '데이터 저장 완료'}  
+        
+    
+#     last_data = list(prediction_collection.find({"user_email": user_email}))[-1]
+#     datetime_last = last_data['data'][-4321]['ds']
+#     last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
+    
+#     if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
+#         # 새로 동기화된 데이터가 DynamoDB에 없을 경우
+#         return {'message': '새로운 데이터가 없습니다.'}
+#     else:
+#         # 새로 동기화된 데이터가 DynamoDB에 있을 경우..
+#         #print('In Analysis Check DB : ', user_email)
+#         mongo_new_data_analysis = query_latest_heart_rate_data(user_email)
+#         #print('In Analysis Check DB After query_latest_hrv_data: ', mongo_new_data_analysis)
+#         mongo_new_df_analysis = create_dataframe(mongo_new_data_analysis)
+#         #print('In Analysis Check DB After create_dataframe: ', mongo_new_df_analysis)
+#         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df_analysis)
+#         #print('In Analysis Check DB After preprocess_analysis: ', mongo_new_nk_analysis)
+                
+#         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis)
+#         return {'message': '데이터 저장 완료'}    
+
+# # DynamoDB의 마지막 데이터(시간)과 저장된 MongoDB의 -4321번째(3일 예측 전 마지막 데이터의 시간)와 같은지 비교
+# # 만약 다르다면, DynamoDB에 새로운 데이터가 있으니, DynamoDB Query 실행
+# # 만약 같다면, DynamoDB Query를 할 필요가 없으니, MongoDB Data만 보내줌.
+# @app.post("/check_db_predict")
+# async def check_db_predict(request: UserEmailRequest):
+#     user_email = request.user_email
+    
+#     if prediction_collection.find_one({"user_email": user_email}) == None:
+#         # 해당 사용자의 데이터가 MongoDB에 없을 경우
+#         mongo_new_data_predict = query_latest_heart_rate_data(user_email)
+#         mongo_new_df_predict = create_dataframe(mongo_new_data_predict)
+        
+#         mongo_new_forecast = predict_heart_rate(mongo_new_df_predict)
+        
+#         save_prediction_to_mongodb(user_email, mongo_new_forecast)
+#         return {'message': '데이터 저장 완료'}
+    
+#     last_data = list(prediction_collection.find({"user_email": user_email}))[-1]
+#     datetime_last = last_data['data'][-4321]['ds']
+#     last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
+    
+#     if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
+#         # 새로 동기화된 데이터가 DynamoDB에 없을 경우
+#         return {'message': '새로운 데이터가 없습니다.'}
+#     else:
+#         # 새로 동기화된 데이터가 DynamoDB에 있을 경우..
+#         mongo_new_data_predict = query_latest_heart_rate_data(user_email)
+#         mongo_new_df_predict = create_dataframe(mongo_new_data_predict)
+        
+#         mongo_new_forecast = predict_heart_rate(mongo_new_df_predict)
+        
+#         save_prediction_to_mongodb(user_email, mongo_new_forecast)
+#         return {'message': '데이터 저장 완료'}
         
 if __name__ == "__main__":
     import uvicorn
