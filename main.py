@@ -316,13 +316,12 @@ def get_time_domain_features(nn_intervals) -> dict:
     range_nni = max(nn_intervals) - min(nn_intervals)
 
     sdsd = np.std(diff_nni)
-    rmssd = np.sqrt(np.mean(diff_nni ** 2))
 
     nni_50 = sum(np.abs(diff_nni) > 50)
     pnni_50 = 100 * nni_50 / length_int
     nni_20 = sum(np.abs(diff_nni) > 20)
     pnni_20 = 100 * nni_20 / length_int
-    rmssd = np.sqrt(np.mean(np.square(np.diff(nn_intervals))))
+    rmssd = np.std(np.diff(nn_intervals), ddof=1)
 
     # Feature found on github and not in documentation
     cvsd = rmssd / mean_nni
