@@ -401,15 +401,17 @@ async def get_prediction_data(user_email: str, prediction_date: str):
 
 
 def create_sleep_dataframe(json_data):
+    print('in create sleep dataframe')
+    print('json_data')
     if not json_data:
         raise HTTPException(status_code=404, detail="유저 정보 없음")
     df = precess_sleep_data(json_data)
-    if not df:
-        raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
+    # if not df:
+    #     raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
     
     
     df['ds'] = pd.to_datetime(df['ds'])
-    
+    print(df)
     return df 
 
 
