@@ -335,6 +335,31 @@ def predict_heart_rate(df):
     return concat_df
 
 
+@app.get("/sleep_dates/{user_email}")
+async def get_sleep_dates(user_email: str):
+    dates = sleep_collection.distinct("sleep_date", {"user_email": user_email})
+    return {"dates": [date for date in dates]}
+
+@app.get("/sleep_data/{user_email}/{sleep_date}")
+async def get_sleep_data(user_email: str, sleep_date: str):
+    try:
+        sleep = sleep_collection.find_one({"user_email": user_email, "sleep_date": sleep_date})
+        if sleep:
+            cleaned_data = []
+            for item in sleep['data']:
+                cleaned_item = {
+                    'ds_start': item['ds_start'],
+                    'ds_end': item['ds_end'],
+                    'stage': clean_value(item['stage'])
+                }
+                cleaned_data.append(cleaned_item)
+            return {"data": cleaned_data}
+        else:
+            raise HTTPException(status_code=404, detail="Sleep data not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format")
+
+
 @app.get("/analysis_dates/{user_email}")
 async def get_analysis_dates(user_email: str):
     dates = analysis_collection.distinct("analysis_date", {"user_email": user_email})
