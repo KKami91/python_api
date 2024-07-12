@@ -410,7 +410,8 @@ def create_sleep_dataframe(json_data):
     #     raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
     
     
-    df['ds'] = pd.to_datetime(df['ds'])
+    df['ds_start'] = pd.to_datetime(df['ds_start'])
+    df['ds_end'] = pd.to_datetime(df['ds_end'])
     print(df)
     return df 
 
