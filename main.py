@@ -224,23 +224,17 @@ def query_one_heart_rate_data(user_email: str):
 
 # 바로 수면 데이터의 데이터프레임 만들기
 def precess_sleep_data(items):
-    user_email = items[0]['PK']['S'][2:]
     starttime = []
     endtime = []
     stage = []
-    user = []
 
     for i in range(len(items)):
         for j in range(len(items[i]['recordInfo']['M']['stages']['L'])):
             starttime.append(conv_ds_sleep(items[i]['recordInfo']['M']['stages']['L'][j]['M']['startTime']['S']))
             endtime.append(conv_ds_sleep(items[i]['recordInfo']['M']['stages']['L'][j]['M']['endTime']['S']))
             stage.append(items[i]['recordInfo']['M']['stages']['L'][j]['M']['stage']['N'])    
-            
-    user.append(user_email)
-    user = user * len(starttime)
-    
+              
     df = pd.DataFrame({
-        'unique_id' : user,
         'ds_start' : starttime,
         'ds_end' : endtime,
         'stage' : stage
