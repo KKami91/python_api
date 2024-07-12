@@ -52,7 +52,14 @@ client = MongoClient(MONGODB_URI)
 db = client.get_database("heart_rate_db")
 prediction_collection = db.prediction_results
 analysis_collection = db.analysis_results
+sleep_collection = db.sleep_results
 
+
+# 수면 데이터 시간 처리
+def conv_ds_sleep(time):
+    time = time.replace('T', ' ')
+    time = time.replace('Z', '')
+    return time[:-5]
 
 # 시간을 한국 시간으로 변형
 def conv_ds(startTime):
@@ -88,6 +95,71 @@ def add_9(startTime):
 def get_month_lastday(year, month):
     next_month = datetime(year=year, month=month, day=1).date() + relativedelta.relativedelta(months=1)
     return (next_month - timedelta(days=1)).day
+
+
+
+# 마지막 데이터로부터 60개(2달치) 데이터만 query (수면 데이터)
+def query_latest_sleep_data(user_email: str, limit: int = 60):
+    items = []
+    last_evaluated_key = None
+    try:
+        while len(items) < limit:
+            query_params = {
+                'TableName': TABLE_NAME,
+                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+                'ExpressionAttributeValues': {
+                    ':pk': {'S': f'U#{user_email}'},
+                    ':sk_prefix': {'S': f'SleepSessionRecord#'},
+                },
+                'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+                'Limit': min(limit - len(items), 1000)
+            }
+            
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+            
+            response = dynamodb.query(**query_params)
+            
+            items.extend(response['Items'])
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key or len(items) >= limit:
+                break
+        
+        # 원래 순서로 되돌리기
+        items.reverse()
+        
+        return items[:limit] 
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+
+# 마지막 데이터 1개만 query (DynamoDB 데이터가 새로 동기화가 되었는지 확인 -> MongoDB에 저장된 데이터와 비교를 위해)  (수면 데이터)  
+def query_one_sleep_data(user_email: str):
+    try:
+        query_params = {
+            'TableName': TABLE_NAME,
+            'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+            'ExpressionAttributeValues': {
+                ':pk': {'S': f'U#{user_email}'},
+                ':sk_prefix': {'S': f'SleepSessionRecord#'},
+            },
+            'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+            'Limit': 1  # 딱 1개의 항목만 요청
+        }
+        
+        response = dynamodb.query(**query_params)
+        
+        if response['Items']:
+            return response['Items'][0]  # 첫 번째(가장 최신) 항목만 반환
+        else:
+            return None  # 결과가 없을 경우
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+
+
+
 
 # 마지막 데이터로부터 40000개의 데이터만 query
 def query_latest_heart_rate_data(user_email: str, limit: int = 40000):
@@ -149,6 +221,33 @@ def query_one_heart_rate_data(user_email: str):
         print(f"An error occurred: {e.response['Error']['Message']}")
         return None
 
+
+# 바로 수면 데이터의 데이터프레임 만들기
+def precess_sleep_data(items):
+    user_email = items[0]['PK']['S'][2:]
+    starttime = []
+    endtime = []
+    stage = []
+    user = []
+
+    for i in range(len(items)):
+        for j in range(len(items[i]['recordInfo']['M']['stages']['L'])):
+            starttime.append(conv_ds_sleep(items[i]['recordInfo']['M']['stages']['L'][j]['M']['startTime']['S']))
+            endtime.append(conv_ds_sleep(items[i]['recordInfo']['M']['stages']['L'][j]['M']['endTime']['S']))
+            stage.append(items[i]['recordInfo']['M']['stages']['L'][j]['M']['stage']['N'])    
+            
+    user.append(user_email)
+    user = user * len(starttime)
+    
+    df = pd.DataFrame({
+        'unique_id' : user,
+        'ds_start' : starttime,
+        'ds_end' : endtime,
+        'stage' : stage
+    })
+    
+    return df
+
 def process_heart_rate_data(items):
     processed_data = []
     for item in items:
@@ -161,6 +260,17 @@ def process_heart_rate_data(items):
                 'y': int(item['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N'])
             })
     return processed_data
+
+
+def save_sleep_to_mongodb(user_email: str, sleep_data, input_date):
+    korea_time = input_date
+    
+    sleep_collection.insert_one({
+        "user_email": user_email,
+        "analysis_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
+        "data": sleep_data.to_dict('records')
+    })
+    
 
 def save_analysis_to_mongodb(user_email: str, analysis_data, input_date):
     korea_time = input_date
@@ -288,6 +398,20 @@ async def get_prediction_data(user_email: str, prediction_date: str):
             raise HTTPException(status_code=404, detail="Prediction data not found")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
+
+
+def create_sleep_dataframe(json_data):
+    if not json_data:
+        raise HTTPException(status_code=404, detail="유저 정보 없음")
+    df = precess_sleep_data(json_data)
+    if not df:
+        raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
+    
+    
+    df['ds'] = pd.to_datetime(df['ds'])
+    
+    return df 
+
 
 def create_dataframe(json_data):
     if not json_data:
@@ -424,19 +548,27 @@ async def check_db(request: UserEmailRequest):
     print(f'in check_db... {input_date}')
     # analysis, predict collection 동시에 처리하기에 하나로만 처리? 
     if prediction_collection.find_one({"user_email": user_email}) == None:
+        
+        ##################### HRV ###################################
         print('in none data')
         mongo_new_data = query_latest_heart_rate_data(user_email)
         print(f'after query_latest_heart_rate_data: {mongo_new_data}')
         mongo_new_df = create_dataframe(mongo_new_data)
         print(f'after create_dataframe: {mongo_new_df}')
-        
         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
         print(f'after preprocess_analysis: {mongo_new_hrv_analysis}')
         mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
         print(f'after predict_heart_rate: {mongo_new_forecast}')
+        ##################### HRV ###################################
+        
+        ##################### SLEEP ###################################
+        mongo_new_sleep_data = query_latest_sleep_data(user_email)
+        mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
+        ##################### SLEEP ###################################
         
         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
         save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
+        save_sleep_to_mongodb(user_email, mongo_new_sleep_df, input_date) # 수면 데이터 저장
         
         return {'message': '데이터 저장 완료'}
     
@@ -449,17 +581,28 @@ async def check_db(request: UserEmailRequest):
         return {'message': '새로운 데이터가 없습니다.'}
     # 만약 다르다면 : 새로 동기화된 데이터가 있다면..
     else:
+        ##################### HRV ###################################
+        print('in none data')
         mongo_new_data = query_latest_heart_rate_data(user_email)
+        print(f'after query_latest_heart_rate_data: {mongo_new_data}')
         mongo_new_df = create_dataframe(mongo_new_data)
-        
+        print(f'after create_dataframe: {mongo_new_df}')
         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
+        print(f'after preprocess_analysis: {mongo_new_hrv_analysis}')
         mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
+        print(f'after predict_heart_rate: {mongo_new_forecast}')
+        ##################### HRV ###################################
+        
+        ##################### SLEEP ###################################
+        mongo_new_sleep_data = query_latest_sleep_data(user_email)
+        mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
+        ##################### SLEEP ###################################
         
         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
         save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
+        save_sleep_to_mongodb(user_email, mongo_new_sleep_df, input_date) # 수면 데이터 저장
         
         return {'message': '데이터 저장 완료'}
-            
     
         
     
