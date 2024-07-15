@@ -52,14 +52,8 @@ client = MongoClient(MONGODB_URI)
 db = client.get_database("heart_rate_db")
 prediction_collection = db.prediction_results
 analysis_collection = db.analysis_results
+step_collection = db.step_results
 sleep_collection = db.sleep_results
-
-
-# 수면 데이터 시간 처리
-def conv_ds_sleep(time):
-    time = time.replace('T', ' ')
-    time = time.replace('Z', '')
-    return time[:-5]
 
 # 시간을 한국 시간으로 변형
 def conv_ds(startTime):
@@ -96,6 +90,140 @@ def get_month_lastday(year, month):
     next_month = datetime(year=year, month=month, day=1).date() + relativedelta.relativedelta(months=1)
     return (next_month - timedelta(days=1)).day
 
+# 걸음수 데이터 시간 처리
+def conv_ds_step(time):
+    time = time.replace('T', ' ')
+    return time
+
+# 수면 데이터 시간 처리
+def conv_ds_sleep(time):
+    time = time.replace('T', ' ')
+    time = time.replace('Z', '')
+    return time[:-5]
+
+
+
+
+
+
+# 마지막 데이터로부터 40000개의 데이터만 query -> HeartRate
+def query_latest_heart_rate_data(user_email: str, limit: int = 40000):
+    items = []
+    last_evaluated_key = None
+    try:
+        while len(items) < limit:
+            query_params = {
+                'TableName': TABLE_NAME,
+                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+                'ExpressionAttributeValues': {
+                    ':pk': {'S': f'U#{user_email}'},
+                    ':sk_prefix': {'S': f'HeartRateRecord#'},
+                },
+                'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+                'Limit': min(limit - len(items), 1000)
+            }
+            
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+            
+            response = dynamodb.query(**query_params)
+            
+            items.extend(response['Items'])
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key or len(items) >= limit:
+                break
+        
+        # 원래 순서로 되돌리기
+        items.reverse()
+        
+        return items[:limit] 
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+    
+# 마지막 데이터 1개만 query -> HeartRate (DynamoDB 데이터가 새로 동기화가 되었는지 확인 -> MongoDB에 저장된 데이터와 비교를 위해)    
+def query_one_heart_rate_data(user_email: str):
+    try:
+        query_params = {
+            'TableName': TABLE_NAME,
+            'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+            'ExpressionAttributeValues': {
+                ':pk': {'S': f'U#{user_email}'},
+                ':sk_prefix': {'S': f'HeartRateRecord#'},
+            },
+            'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+            'Limit': 1  # 딱 1개의 항목만 요청
+        }
+        
+        response = dynamodb.query(**query_params)
+        
+        if response['Items']:
+            return response['Items'][0]  # 첫 번째(가장 최신) 항목만 반환
+        else:
+            return None  # 결과가 없을 경우
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+
+
+# 마지막 데이터로부터 60개(2달치) 데이터만 query (걸음수 데이터)
+def query_latest_step_data(user_email: str, limit: int = 60):
+    items = []
+    last_evaluated_key = None
+    try:
+        while len(items) < limit:
+            query_params = {
+                'TableName': TABLE_NAME,
+                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+                'ExpressionAttributeValues': {
+                    ':pk': {'S': f'U#{user_email}'},
+                    ':sk_prefix': {'S': f'StepsRecord#'},
+                },
+                'ScanIndexForward': False,
+                'Limit': min(limit - len(items), 1000)
+            }
+            
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+                
+            response = dynamodb.query(**query_params)
+            
+            items.expand(response['Items'])
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key or len(items) >= limit:
+                break
+        items.reverse()
+        
+        return items[:limit]
+    except ClientError as e:
+        print(f'an error ocurred: {e.response['Error']['Message']}')
+        return None
+
+# 마지막 데이터 1개만 query (DynamoDB 데이터가 새로 동기화가 되었는지 확인 -> MongoDB에 저장된 데이터와 비교를 위해)  (걸음수 데이터)  
+def query_one_step_data(user_email: str):
+    try:
+        query_params = {
+            'TableName': TABLE_NAME,
+            'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+            'ExpressionAttributeValues': {
+                ':pk': {'S': f'U#{user_email}'},
+                ':sk_prefix': {'S': f'StepsRecord#'},
+            },
+            'ScanIndexForward': False,  
+            'Limit': 1 
+        }
+        
+        response = dynamodb.query(**query_params)
+        
+        if response['Items']:
+            return response['Items'][0]  
+        else:
+            return None  
+    except ClientError as e:
+        print(f"an error occurred: {e.response['Error']['Message']}")
+        return None
 
 
 # 마지막 데이터로부터 60개(2달치) 데이터만 query (수면 데이터)
@@ -159,71 +287,79 @@ def query_one_sleep_data(user_email: str):
         return None
 
 
-
-
-# 마지막 데이터로부터 40000개의 데이터만 query
-def query_latest_heart_rate_data(user_email: str, limit: int = 40000):
-    items = []
-    last_evaluated_key = None
-    try:
-        while len(items) < limit:
-            query_params = {
-                'TableName': TABLE_NAME,
-                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
-                'ExpressionAttributeValues': {
-                    ':pk': {'S': f'U#{user_email}'},
-                    ':sk_prefix': {'S': f'HeartRateRecord#'},
-                },
-                'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
-                'Limit': min(limit - len(items), 1000)
-            }
-            
-            if last_evaluated_key:
-                query_params['ExclusiveStartKey'] = last_evaluated_key
-            
-            response = dynamodb.query(**query_params)
-            
-            items.extend(response['Items'])
-            
-            last_evaluated_key = response.get('LastEvaluatedKey')
-            if not last_evaluated_key or len(items) >= limit:
-                break
-        
-        # 원래 순서로 되돌리기
-        items.reverse()
-        
-        return items[:limit] 
-    except ClientError as e:
-        print(f"An error occurred: {e.response['Error']['Message']}")
-        return None
+def create_dataframe(json_data):
+    if not json_data:
+        raise HTTPException(status_code=404, detail="유저 정보 없음")
+    processed_load_data = process_heart_rate_data(json_data)
+    if not processed_load_data:
+        raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
     
-# 마지막 데이터 1개만 query (DynamoDB 데이터가 새로 동기화가 되었는지 확인 -> MongoDB에 저장된 데이터와 비교를 위해)    
-def query_one_heart_rate_data(user_email: str):
-    try:
-        query_params = {
-            'TableName': TABLE_NAME,
-            'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
-            'ExpressionAttributeValues': {
-                ':pk': {'S': f'U#{user_email}'},
-                ':sk_prefix': {'S': f'HeartRateRecord#'},
-            },
-            'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
-            'Limit': 1  # 딱 1개의 항목만 요청
-        }
+    df = pd.DataFrame(processed_load_data)
+    df['ds'] = pd.to_datetime(df['ds'])
+    
+    return df
+
+def create_step_dataframe(json_data):
+    if not json_data:
+        raise HTTPException(status_code=404, detail="유저 정보 없음")
+    df = process_step_data(json_data)
+    
+    return df
+
+def create_sleep_dataframe(json_data):
+    print('in create sleep dataframe')
+    print('json_data')
+    if not json_data:
+        raise HTTPException(status_code=404, detail="유저 정보 없음")
+    df = process_sleep_data(json_data)
+    # if not df:
+    #     raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
+    
+    
+    df['ds_start'] = pd.to_datetime(df['ds_start'])
+    df['ds_end'] = pd.to_datetime(df['ds_end'])
+    print(df)
+    return df 
+
+
+def process_heart_rate_data(items):
+    processed_data = []
+    for item in items:
+        sk_parts = item['SK']['S'].split('#')
+        if len(sk_parts) >= 2 and sk_parts[0] == 'HeartRateRecord':
+            timestamp = sk_parts[1]
+            converted_timestamp = conv_ds(timestamp)
+            processed_data.append({
+                'ds': converted_timestamp,
+                'y': int(item['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N'])
+            })
+    return processed_data
+
+def process_step_data(items):
+    starttime = []
+    step = []
+    
+    for i in range(len(items)):
+        starttime.append(conv_ds_step(items[i]['startTime']['S'][:-18]) + ':00')
+        step.append(int(items[i]['recordInfo']['M']['count']['N']))
         
-        response = dynamodb.query(**query_params)
-        
-        if response['Items']:
-            return response['Items'][0]  # 첫 번째(가장 최신) 항목만 반환
-        else:
-            return None  # 결과가 없을 경우
-    except ClientError as e:
-        print(f"An error occurred: {e.response['Error']['Message']}")
-        return None
+    df = pd.DataFrame({
+        'ds': starttime,
+        'step': step
+    })
+    
+    df['ds'] = pd.to_datetime(df['ds'])
+    
+    df = df.set_index('ds')
+    df = df.resample('H').sum()
+    df = df.reset_index()
+    
+    return df
+
 
 
 # 바로 수면 데이터의 데이터프레임 만들기
-def precess_sleep_data(items):
+def process_sleep_data(items):
     starttime = []
     endtime = []
     stage = []
@@ -242,50 +378,6 @@ def precess_sleep_data(items):
     
     return df
 
-def process_heart_rate_data(items):
-    processed_data = []
-    for item in items:
-        sk_parts = item['SK']['S'].split('#')
-        if len(sk_parts) >= 2 and sk_parts[0] == 'HeartRateRecord':
-            timestamp = sk_parts[1]
-            converted_timestamp = conv_ds(timestamp)
-            processed_data.append({
-                'ds': converted_timestamp,
-                'y': int(item['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N'])
-            })
-    return processed_data
-
-
-def save_sleep_to_mongodb(user_email: str, sleep_data, input_date):
-    korea_time = input_date
-    
-    sleep_collection.insert_one({
-        "user_email": user_email,
-        "sleep_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
-        "data": sleep_data.to_dict('records')
-    })
-    
-
-def save_analysis_to_mongodb(user_email: str, analysis_data, input_date):
-    korea_time = input_date
-    
-    sdnn_rmssd = analysis_data.to_dict('records')
-    
-    # Clean the data before saving
-    cleaned_data = []
-    for item in sdnn_rmssd:
-        cleaned_item = {
-            'ds': item['ds'],
-            'sdnn': clean_value(item['sdnn']),
-            'rmssd': clean_value(item['rmssd'])
-        }
-        cleaned_data.append(cleaned_item)
-    
-    analysis_collection.insert_one({
-        "user_email": user_email,
-        "analysis_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
-        "data": cleaned_data
-    })
 
 def save_prediction_to_mongodb(user_email: str, prediction_data, input_date):
     korea_time = input_date
@@ -316,6 +408,50 @@ def save_prediction_to_mongodb(user_email: str, prediction_data, input_date):
         "data": data_dict
     })
 
+def save_analysis_to_mongodb(user_email: str, analysis_data, input_date):
+    korea_time = input_date
+    
+    sdnn_rmssd = analysis_data.to_dict('records')
+    
+    # Clean the data before saving
+    cleaned_data = []
+    for item in sdnn_rmssd:
+        cleaned_item = {
+            'ds': item['ds'],
+            'sdnn': clean_value(item['sdnn']),
+            'rmssd': clean_value(item['rmssd'])
+        }
+        cleaned_data.append(cleaned_item)
+    
+    analysis_collection.insert_one({
+        "user_email": user_email,
+        "analysis_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
+        "data": cleaned_data
+    })
+    
+def save_step_to_mongodb(user_email: str, step_data, input_date):
+    korea_time = input_date
+    
+    step_collection.inser_one({
+        'user_email': user_email,
+        'step_date': str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
+        'data': step_data.to_dict('records')
+    })
+
+def save_sleep_to_mongodb(user_email: str, sleep_data, input_date):
+    korea_time = input_date
+    
+    sleep_collection.insert_one({
+        "user_email": user_email,
+        "sleep_date": str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
+        "data": sleep_data.to_dict('records')
+    })
+    
+
+
+
+
+
 def predict_heart_rate(df):
     model = Prophet(changepoint_prior_scale=0.001,
                     changepoint_range=0.95,
@@ -335,27 +471,28 @@ def predict_heart_rate(df):
     return concat_df
 
 
-@app.get("/sleep_dates/{user_email}")
-async def get_sleep_dates(user_email: str):
-    dates = sleep_collection.distinct("sleep_date", {"user_email": user_email})
+@app.get("/prediction_dates/{user_email}")
+async def get_prediction_dates(user_email: str):
+    dates = prediction_collection.distinct("prediction_date", {"user_email": user_email})
     return {"dates": [date for date in dates]}
 
-@app.get("/sleep_data/{user_email}/{sleep_date}")
-async def get_sleep_data(user_email: str, sleep_date: str):
+@app.get("/prediction_data/{user_email}/{prediction_date}")
+async def get_prediction_data(user_email: str, prediction_date: str):
     try:
-        sleep = sleep_collection.find_one({"user_email": user_email, "sleep_date": sleep_date})
-        if sleep:
-            cleaned_data = []
-            for item in sleep['data']:
-                cleaned_item = {
-                    'ds_start': item['ds_start'],
-                    'ds_end': item['ds_end'],
-                    'stage': clean_value(item['stage'])
+        prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": prediction_date})
+        if prediction:
+            print('in True')
+            def convert_types(item):
+                return {
+                    'ds': item['ds'],
+                    'yhat': float(item['yhat']) if item['yhat'] is not None else None,
+                    'y': int(item['y']) if item['y'] is not None else None
                 }
-                cleaned_data.append(cleaned_item)
-            return {"data": cleaned_data}
+            
+            converted_data = [convert_types(item) for item in prediction["data"]]
+            return {"data": converted_data}
         else:
-            raise HTTPException(status_code=404, detail="Sleep data not found")
+            raise HTTPException(status_code=404, detail="Prediction data not found")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
 
@@ -393,59 +530,54 @@ async def get_analysis_data(user_email: str, analysis_date: str):
         raise HTTPException(status_code=400, detail="Invalid date format")
 
 
-@app.get("/prediction_dates/{user_email}")
-async def get_prediction_dates(user_email: str):
-    dates = prediction_collection.distinct("prediction_date", {"user_email": user_email})
+@app.get("/step_dates/{user_email}")
+async def get_step_dates(user_email: str):
+    dates = step_collection.distinct("step_date", {"user_email": user_email})
     return {"dates": [date for date in dates]}
 
-@app.get("/prediction_data/{user_email}/{prediction_date}")
-async def get_prediction_data(user_email: str, prediction_date: str):
+@app.get("/step_data/{user_email}/{step_date}")
+async def get_step_data(user_email: str, step_date: str):
     try:
-        prediction = prediction_collection.find_one({"user_email": user_email, "prediction_date": prediction_date})
-        if prediction:
-            print('in True')
-            def convert_types(item):
-                return {
+        step = step_collection.find_one({"user_email": user_email, "step_date": step_date})
+        if step:
+            step_data = []
+            for item in step['data']:
+                step_item = {
                     'ds': item['ds'],
-                    'yhat': float(item['yhat']) if item['yhat'] is not None else None,
-                    'y': int(item['y']) if item['y'] is not None else None
+                    'step': item['step']
                 }
-            
-            converted_data = [convert_types(item) for item in prediction["data"]]
-            return {"data": converted_data}
+                step_data.append(step_item)
+            return {"data": step_data}
         else:
-            raise HTTPException(status_code=404, detail="Prediction data not found")
+            raise HTTPException(status_code=404, detail="step data not fount")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
 
 
-def create_sleep_dataframe(json_data):
-    print('in create sleep dataframe')
-    print('json_data')
-    if not json_data:
-        raise HTTPException(status_code=404, detail="유저 정보 없음")
-    df = precess_sleep_data(json_data)
-    # if not df:
-    #     raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
-    
-    
-    df['ds_start'] = pd.to_datetime(df['ds_start'])
-    df['ds_end'] = pd.to_datetime(df['ds_end'])
-    print(df)
-    return df 
+@app.get("/sleep_dates/{user_email}")
+async def get_sleep_dates(user_email: str):
+    dates = sleep_collection.distinct("sleep_date", {"user_email": user_email})
+    return {"dates": [date for date in dates]}
 
+@app.get("/sleep_data/{user_email}/{sleep_date}")
+async def get_sleep_data(user_email: str, sleep_date: str):
+    try:
+        sleep = sleep_collection.find_one({"user_email": user_email, "sleep_date": sleep_date})
+        if sleep:
+            cleaned_data = []
+            for item in sleep['data']:
+                cleaned_item = {
+                    'ds_start': item['ds_start'],
+                    'ds_end': item['ds_end'],
+                    'stage': clean_value(item['stage'])
+                }
+                cleaned_data.append(cleaned_item)
+            return {"data": cleaned_data}
+        else:
+            raise HTTPException(status_code=404, detail="Sleep data not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format")
 
-def create_dataframe(json_data):
-    if not json_data:
-        raise HTTPException(status_code=404, detail="유저 정보 없음")
-    processed_load_data = process_heart_rate_data(json_data)
-    if not processed_load_data:
-        raise HTTPException(status_code=404, detail="유저의 데이터가 없음")
-    
-    df = pd.DataFrame(processed_load_data)
-    df['ds'] = pd.to_datetime(df['ds'])
-    
-    return df
 
 def get_time_domain_features(nn_intervals) -> dict:
     # nn_intervals(ms) => 60000/bpm
@@ -583,6 +715,11 @@ async def check_db(request: UserEmailRequest):
         print(f'after predict_heart_rate: {mongo_new_forecast}')
         ##################### HRV ###################################
         
+        ##################### STEP ###################################
+        mongo_new_step_data = query_latest_step_data(user_email)
+        mongo_new_step_df = create_step_dataframe(mongo_new_step_data)       
+        ##################### STEP ###################################
+            
         ##################### SLEEP ###################################
         mongo_new_sleep_data = query_latest_sleep_data(user_email)
         mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
@@ -590,6 +727,7 @@ async def check_db(request: UserEmailRequest):
         
         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
         save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
+        save_step_to_mongodb(user_email, mongo_new_step_df, input_date) # 걸음수 데이터 저장
         save_sleep_to_mongodb(user_email, mongo_new_sleep_df, input_date) # 수면 데이터 저장
         
         return {'message': '데이터 저장 완료'}
@@ -614,6 +752,11 @@ async def check_db(request: UserEmailRequest):
         mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
         print(f'after predict_heart_rate: {mongo_new_forecast}')
         ##################### HRV ###################################
+                
+        ##################### STEP ###################################
+        mongo_new_step_data = query_latest_step_data(user_email)
+        mongo_new_step_df = create_step_dataframe(mongo_new_step_data)       
+        ##################### STEP ###################################
         
         ##################### SLEEP ###################################
         mongo_new_sleep_data = query_latest_sleep_data(user_email)
@@ -622,6 +765,7 @@ async def check_db(request: UserEmailRequest):
         
         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
         save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
+        save_step_to_mongodb(user_email, mongo_new_step_df, input_date) # 걸음수 데이터 저장
         save_sleep_to_mongodb(user_email, mongo_new_sleep_df, input_date) # 수면 데이터 저장
         
         return {'message': '데이터 저장 완료'}
