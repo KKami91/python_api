@@ -168,7 +168,7 @@ def query_one_heart_rate_data(user_email: str):
 
 
 # 마지막 데이터로부터 60개(2달치) 데이터만 query (걸음수 데이터)
-def query_latest_step_data(user_email: str, limit: int = 60):
+def query_latest_step_data(user_email: str, limit: int = 40000):
     items = []
     last_evaluated_key = None
     try:
