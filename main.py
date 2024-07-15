@@ -189,7 +189,7 @@ def query_latest_step_data(user_email: str, limit: int = 60):
                 
             response = dynamodb.query(**query_params)
             
-            items.expand(response['Items'])
+            items.extend(response['Items'])
             
             last_evaluated_key = response.get('LastEvaluatedKey')
             if not last_evaluated_key or len(items) >= limit:
