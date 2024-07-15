@@ -430,7 +430,7 @@ def save_analysis_to_mongodb(user_email: str, analysis_data, input_date):
 def save_step_to_mongodb(user_email: str, step_data, input_date):
     korea_time = input_date
     
-    step_collection.inser_one({
+    step_collection.insert_one({
         'user_email': user_email,
         'step_date': str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
         'data': step_data.to_dict('records')
