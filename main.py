@@ -178,7 +178,7 @@ def query_latest_step_data(user_email: str, limit: int = 60):
                 'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
                 'ExpressionAttributeValues': {
                     ':pk': {'S': f'U#{user_email}'},
-                    ':sk_prefix': {'S': f'StepsRecord#'},
+                    ':sk_prefix': {'S': 'StepsRecord#'},
                 },
                 'ScanIndexForward': False,
                 'Limit': min(limit - len(items), 1000)
@@ -186,7 +186,7 @@ def query_latest_step_data(user_email: str, limit: int = 60):
             
             if last_evaluated_key:
                 query_params['ExclusiveStartKey'] = last_evaluated_key
-                
+            
             response = dynamodb.query(**query_params)
             
             items.extend(response['Items'])
@@ -196,9 +196,9 @@ def query_latest_step_data(user_email: str, limit: int = 60):
                 break
         items.reverse()
         
-        return items[:limit]
+        return items[:limit] 
     except ClientError as e:
-        print(f'an error ocurred: {e.response['Error']['Message']}')
+        print(f"An error occurred: {e.response['Error']['Message']}")
         return None
 
 # 마지막 데이터 1개만 query (DynamoDB 데이터가 새로 동기화가 되었는지 확인 -> MongoDB에 저장된 데이터와 비교를 위해)  (걸음수 데이터)  
@@ -239,7 +239,7 @@ def query_latest_sleep_data(user_email: str, limit: int = 60):
                     ':pk': {'S': f'U#{user_email}'},
                     ':sk_prefix': {'S': f'SleepSessionRecord#'},
                 },
-                'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+                'ScanIndexForward': False,
                 'Limit': min(limit - len(items), 1000)
             }
             
@@ -253,8 +253,6 @@ def query_latest_sleep_data(user_email: str, limit: int = 60):
             last_evaluated_key = response.get('LastEvaluatedKey')
             if not last_evaluated_key or len(items) >= limit:
                 break
-        
-        # 원래 순서로 되돌리기
         items.reverse()
         
         return items[:limit] 
