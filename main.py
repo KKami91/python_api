@@ -167,7 +167,7 @@ def query_one_heart_rate_data(user_email: str):
         return None
 
 
-# 마지막 데이터로부터 60개(2달치) 데이터만 query (걸음수 데이터)
+# 마지막 데이터로부터 40000개 데이터만 query (걸음수 데이터)
 def query_latest_step_data(user_email: str, limit: int = 40000):
     items = []
     last_evaluated_key = None
@@ -338,7 +338,7 @@ def process_step_data(items):
     step = []
     
     for i in range(len(items)):
-        starttime.append(conv_ds_step(items[i]['startTime']['S'][:-18]) + ':00')
+        starttime.append(conv_ds_step(items[i]['startTime']['S'][:16]) + ':00')
         step.append(int(items[i]['recordInfo']['M']['count']['N']))
         
     df = pd.DataFrame({
@@ -346,7 +346,7 @@ def process_step_data(items):
         'step': step
     })
     
-    df['ds'] = pd.to_datetime(df['ds'])
+    df['ds'] = pd.to_datetime(df['ds']) # 에러
     
     df = df.set_index('ds')
     df = df.resample('H').sum()
