@@ -54,8 +54,9 @@ prediction_collection = db.prediction_results
 analysis_collection = db.analysis_results
 step_collection = db.step_results
 sleep_collection = db.sleep_results
+calorie_collection = db.calorie_results
 
-# 시간을 한국 시간으로 변형
+# 시간을 한국 시간으로 변형 (칼로리, 심박수)
 def conv_ds(startTime):
     startTime = startTime.replace('T', ' ')
     startTime = startTime.replace('Z', '')
@@ -102,10 +103,70 @@ def conv_ds_sleep(time):
     return time[:-5]
 
 
+############################# 칼로리 ###################################
+# 마지막 데이터로부터 3000개의 데이터만 query -> calorie
+def query_latest_calorie_data(user_email: str, limit: int = 3000):
+    items = []
+    last_evaluated_key = None
+    try:
+        while len(items) < limit:
+            query_params = {
+                'TableName': TABLE_NAME,
+                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+                'ExpressionAttributeValues': {
+                    ':pk': {'S': f'U#{user_email}'},
+                    ':sk_prefix': {'S': f'TotalCaloriesBurnedRecord#'},
+                },
+                'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+                'Limit': min(limit - len(items), 1000)
+            }
+            
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+            
+            response = dynamodb.query(**query_params)
+            
+            items.extend(response['Items'])
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key or len(items) >= limit:
+                break
+        
+        # 원래 순서로 되돌리기
+        items.reverse()
+        
+        return items[:limit] 
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+    
+# 마지막 데이터 1개만 query calorie
+def query_one_calorie_data(user_email: str):
+    try:
+        query_params = {
+            'TableName': TABLE_NAME,
+            'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+            'ExpressionAttributeValues': {
+                ':pk': {'S': f'U#{user_email}'},
+                ':sk_prefix': {'S': f'TotalCaloriesBurnedRecord#'},
+            },
+            'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+            'Limit': 1  # 딱 1개의 항목만 요청
+        }
+        
+        response = dynamodb.query(**query_params)
+        
+        if response['Items']:
+            return response['Items'][0]  # 첫 번째(가장 최신) 항목만 반환
+        else:
+            return None  # 결과가 없을 경우
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+############################# 칼로리 ###################################
 
 
-
-
+############################# 심박수 ###################################
 # 마지막 데이터로부터 40000개의 데이터만 query -> HeartRate
 def query_latest_heart_rate_data(user_email: str, limit: int = 40000):
     items = []
@@ -165,8 +226,10 @@ def query_one_heart_rate_data(user_email: str):
     except ClientError as e:
         print(f"An error occurred: {e.response['Error']['Message']}")
         return None
+############################# 심박수 ###################################
 
 
+############################# 걸음수 ###################################
 # 마지막 데이터로부터 40000개 데이터만 query (걸음수 데이터)
 def query_latest_step_data(user_email: str, limit: int = 40000):
     items = []
@@ -224,8 +287,10 @@ def query_one_step_data(user_email: str):
     except ClientError as e:
         print(f"an error occurred: {e.response['Error']['Message']}")
         return None
+############################# 걸음수 ###################################
 
 
+############################# 수면 ###################################
 # 마지막 데이터로부터 60개(2달치) 데이터만 query (수면 데이터)
 def query_latest_sleep_data(user_email: str, limit: int = 60):
     items = []
@@ -283,9 +348,18 @@ def query_one_sleep_data(user_email: str):
     except ClientError as e:
         print(f"An error occurred: {e.response['Error']['Message']}")
         return None
+############################# 수면 ###################################
 
 
-def create_dataframe(json_data):
+def create_calorie_dataframe(json_data):
+    if not json_data:
+        raise HTTPException(status_code=404, detail="유저 정보 없음")
+    df = process_calorie_data(json_data)
+    
+    return df
+
+
+def create_heart_rate_dataframe(json_data):
     if not json_data:
         raise HTTPException(status_code=404, detail="유저 정보 없음")
     processed_load_data = process_heart_rate_data(json_data)
@@ -320,6 +394,26 @@ def create_sleep_dataframe(json_data):
     return df 
 
 
+def process_calorie_data(items):
+    ds = []
+    calorie = []
+    
+    for i in range(len(items)):
+        ds.append(conv_ds(items[i]['startTime']['S']))
+        calorie.append(np.round(float(items[i]['recordInfo']['M']['energy']['M']['value']['N']),3))
+        
+    df = pd.DataFrame({
+        'ds': ds,
+        'calorie': calorie
+    })
+    
+    df['ds'] = pd.to_datetime(df['ds'])
+    df = df.set_index('ds')
+    df = df.resample('h').sum()
+    df = df.reset_index()
+    
+    return df
+
 def process_heart_rate_data(items):
     processed_data = []
     for item in items:
@@ -349,7 +443,7 @@ def process_step_data(items):
     df['ds'] = pd.to_datetime(df['ds']) # 에러
     
     df = df.set_index('ds')
-    df = df.resample('H').sum()
+    df = df.resample('h').sum()
     df = df.reset_index()
     
     return df
@@ -375,6 +469,15 @@ def process_sleep_data(items):
     })
     
     return df
+
+def save_calorie_to_mongodb(user_email: str, calorie_data, input_date):
+    korea_time = input_date
+    
+    calorie_collection.insert_one({
+        'user_email': user_email,
+        'step_date': str(korea_time.year) + '-' + str(korea_time.month).zfill(2) + '-' + str(korea_time.day).zfill(2) + ' ' + str(korea_time.hour).zfill(2) + ':' + str(korea_time.minute).zfill(2) + ':' + str(korea_time.second).zfill(2),
+        'data': calorie_data.to_dict('records')
+    })
 
 
 def save_prediction_to_mongodb(user_email: str, prediction_data, input_date):
@@ -447,9 +550,6 @@ def save_sleep_to_mongodb(user_email: str, sleep_data, input_date):
     
 
 
-
-
-
 def predict_heart_rate(df):
     model = Prophet(changepoint_prior_scale=0.001,
                     changepoint_range=0.95,
@@ -467,6 +567,30 @@ def predict_heart_rate(df):
     concat_df = concat_df.merge(df[['ds', 'y']], on='ds', how='left')
     concat_df = concat_df.where(pd.notnull(concat_df), None)
     return concat_df
+
+
+@app.get("/calorie_dates/{user_email}")
+async def get_calorie_dates(user_email: str):
+    dates = calorie_collection.distinct('calorie_date', {'user_email': user_email})
+    return {'dates': [date for date in dates]}
+
+@app.get("/calorie_data/{user_email}/{calorie_date}")
+async def get_calorie_data(user_email: str, calorie_date: str):
+    try:
+        calorie = calorie_collection.find_one({"user_email": user_email, "calorie_date": calorie_date})
+        if calorie:
+            calorie_data = []
+            for item in calorie['data']:
+                calorie_item = {
+                    'ds': item['ds'],
+                    'calorie': item['calorie']
+                }
+                calorie_data.append(calorie_item)
+            return {"data": calorie_data}
+        else:
+            raise HTTPException(status_code=404, detail='calorie data not found')
+    except ValueError:
+        raise HTTPException(status_code=400, detail='invalid date format')
 
 
 @app.get("/prediction_dates/{user_email}")
@@ -701,11 +825,16 @@ async def check_db(request: UserEmailRequest):
     # analysis, predict collection 동시에 처리하기에 하나로만 처리? 
     if prediction_collection.find_one({"user_email": user_email}) == None:
         
+        ##################### CALORIE ###################################
+        mongo_new_calorie_data = query_latest_calorie_data(user_email)
+        mongo_new_calorie_df = create_calorie_dataframe(mongo_new_calorie_data)
+        ##################### CALORIE ###################################
+        
         ##################### HRV ###################################
         print('in none data')
         mongo_new_data = query_latest_heart_rate_data(user_email)
         print(f'after query_latest_heart_rate_data: {mongo_new_data}')
-        mongo_new_df = create_dataframe(mongo_new_data)
+        mongo_new_df = create_heart_rate_dataframe(mongo_new_data)
         print(f'after create_dataframe: {mongo_new_df}')
         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
         print(f'after preprocess_analysis: {mongo_new_hrv_analysis}')
@@ -723,6 +852,7 @@ async def check_db(request: UserEmailRequest):
         mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
         ##################### SLEEP ###################################
         
+        save_calorie_to_mongodb(user_email, mongo_new_calorie_df, input_date) # 칼로리 데이터 저장
         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
         save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
         save_step_to_mongodb(user_email, mongo_new_step_df, input_date) # 걸음수 데이터 저장
@@ -739,11 +869,17 @@ async def check_db(request: UserEmailRequest):
         return {'message': '새로운 데이터가 없습니다.'}
     # 만약 다르다면 : 새로 동기화된 데이터가 있다면..
     else:
+        
+        ##################### CALORIE ###################################
+        mongo_new_calorie_data = query_latest_calorie_data(user_email)
+        mongo_new_calorie_df = create_calorie_dataframe(mongo_new_calorie_data)
+        ##################### CALORIE ###################################
+        
         ##################### HRV ###################################
         print('in none data')
         mongo_new_data = query_latest_heart_rate_data(user_email)
         print(f'after query_latest_heart_rate_data: {mongo_new_data}')
-        mongo_new_df = create_dataframe(mongo_new_data)
+        mongo_new_df = create_heart_rate_dataframe(mongo_new_data)
         print(f'after create_dataframe: {mongo_new_df}')
         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
         print(f'after preprocess_analysis: {mongo_new_hrv_analysis}')
@@ -761,6 +897,7 @@ async def check_db(request: UserEmailRequest):
         mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
         ##################### SLEEP ###################################
         
+        save_calorie_to_mongodb(user_email, mongo_new_calorie_df, input_date) # 칼로리 데이터 저장
         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
         save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
         save_step_to_mongodb(user_email, mongo_new_step_df, input_date) # 걸음수 데이터 저장
