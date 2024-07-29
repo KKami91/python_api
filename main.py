@@ -17,6 +17,7 @@ from urllib.parse import unquote
 import numpy as np
 import math
 import neurokit2 as nk
+import time
 
 app = FastAPI()
 load_dotenv()
@@ -822,41 +823,115 @@ async def check_db(request: UserEmailRequest):
     input_date = datetime.now() + timedelta(hours=9)
     print(f'in check_db... {user_email}')
     print(f'in check_db... {input_date}')
+    
+    
+    # 시간 체크
+    
+    
     # analysis, predict collection 동시에 처리하기에 하나로만 처리? 
     if prediction_collection.find_one({"user_email": user_email}) == None:
         
+        
+        
         ##################### CALORIE ###################################
+        # 칼로리 데이터 query 시간 체크
+        start_time = time.time()
         mongo_new_calorie_data = query_latest_calorie_data(user_email)
+        end_time = time.time()
+        print(f'칼로리 데이터 query 걸린 시간(query_latest_calorie_data) : {(end_time - start_time):.4f}')
+        
+        # 칼로리 데이터프레임 만드는 시간 체크
+        start_time = time.time()
         mongo_new_calorie_df = create_calorie_dataframe(mongo_new_calorie_data)
+        end_time = time.time()
+        print(f'칼로리 데이터프레임 만드는데 걸린 시간(create_calorie_dataframe) : {(end_time - start_time):.4f}')
         ##################### CALORIE ###################################
         
         ##################### HRV ###################################
-        print('in none data')
+        # 1분 BPM query 걸린 시간 체크
+        start_time = time.time()
         mongo_new_data = query_latest_heart_rate_data(user_email)
-        print(f'after query_latest_heart_rate_data: {mongo_new_data}')
+        end_time = time.time()
+        print(f'1분 BPM 데이터 query 걸린 시간(query_latest_heart_rate_data) : {(end_time - start_time):.4f}')
+        
+        # 1분 BPM 데이터프레임 만드는데 걸린 시간 체크
+        start_time = time.time()
         mongo_new_df = create_heart_rate_dataframe(mongo_new_data)
-        print(f'after create_dataframe: {mongo_new_df}')
+        end_time = time.time()
+        print(f'1분 BPM 데이터프레임 만드는 데 걸린 시간(create_heart_rate_dataframe) : {(end_time - start_time):.4f}')
+        
+        # 1분 BPM 데이터 feature 계산 걸린 시간 체크
+        start_time = time.time()
         mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
-        print(f'after preprocess_analysis: {mongo_new_hrv_analysis}')
+        end_time = time.time()
+        print(f'1분 BPM 데이터 time_feature 계산 걸린 시간(preprocess_analysis) : {(end_time - start_time):.4f}')
+        
+        # 1분 BPM 데이터 prophet 예측 걸린 시간 체크
+        start_time = time.time()
         mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
-        print(f'after predict_heart_rate: {mongo_new_forecast}')
+        end_time = time.time()
+        print(f'1분 BPM 데이터 prophet 예측 걸린 시간(predict_heart_rate) : {(end_time - start_time):.4f}')        
+        
         ##################### HRV ###################################
         
         ##################### STEP ###################################
+        # 걸음수 데이터 query 걸린 시간 체크
+        start_time = time.time()
         mongo_new_step_data = query_latest_step_data(user_email)
+        end_time = time.time()
+        print(f'걸음수 데이터 query 걸린 시간(query_latest_step_data) : {(end_time - start_time):.4f}')
+        
+        # 걸음수 데이터프레임 만드는데 걸린 시간 체크
+        start_time = time.time()
         mongo_new_step_df = create_step_dataframe(mongo_new_step_data)       
+        end_time = time.time()
+        print(f'걸음수 데이터 데이터프레임 만드는데 걸린 시간(create_step_dataframe) : {(end_time - start_time):.4f}')       
         ##################### STEP ###################################
             
         ##################### SLEEP ###################################
+        # 수면 데이터 query 걸린 시간 체크
+        start_time = time.time()
         mongo_new_sleep_data = query_latest_sleep_data(user_email)
+        end_time = time.time()
+        print(f'수면 데이터 query 걸린 시간(query_latest_sleep_data) : {(end_time - start_time):.4f}')
+        
+        # 수면 데이터 query 걸린 시간 체크
+        start_time = time.time()
         mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
+        end_time = time.time()
+        print(f'수면 데이터프레임 만드는데 걸린 시간(create_sleep_dataframe) : {(end_time - start_time):.4f}')
         ##################### SLEEP ###################################
         
+        
+        # 칼로리 데이터 몽고DB 저장 걸린 시간 체크
+        start_time = time.time()
         save_calorie_to_mongodb(user_email, mongo_new_calorie_df, input_date) # 칼로리 데이터 저장
+        end_time = time.time()
+        print(f'칼로리 데이터 몽고DB 저장 걸린 시간(save_calorie_to_mongodb) : {(end_time - start_time):.4f}')
+        
+        # 분석 데이터 몽고DB 저장 걸린 시간 체크
+        start_time = time.time()       
         save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
+        end_time = time.time()
+        print(f'분석 데이터 몽고DB 저장 걸린 시간(save_analysis_to_mongodb) : {(end_time - start_time):.4f}')
+        
+        # 예측 데이터 몽고DB 저장 걸린 시간 체크
+        start_time = time.time()
         save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
+        end_time = time.time()
+        print(f'예측 데이터 몽고DB 저장 걸린 시간(save_prediction_to_mongodb) : {(end_time - start_time):.4f}')
+        
+        # 걸음수 데이터 몽고DB 저장 걸린 시간 체크
+        start_time = time.time()
         save_step_to_mongodb(user_email, mongo_new_step_df, input_date) # 걸음수 데이터 저장
+        end_time = time.time()
+        print(f'걸음수 데이터 몽고DB 저장 걸린 시간(save_step_to_mongodb) : {(end_time - start_time):.4f}')
+        
+        # 수면 데이터 몽고DB 저장 걸린 시간 체크
+        start_time = time.time()
         save_sleep_to_mongodb(user_email, mongo_new_sleep_df, input_date) # 수면 데이터 저장
+        end_time = time.time()
+        print(f'수면 데이터 몽고DB 저장 걸린 시간(save_sleep_to_mongodb) : {(end_time - start_time):.4f}')
         
         return {'message': '데이터 저장 완료'}
     
