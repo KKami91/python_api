@@ -270,6 +270,8 @@ def create_calorie_dataframe_(calorie_data):
         'calorie': [np.round(float(calorie_data[x]['recordInfo']['M']['energy']['M']['value']['N'])) for x in range(len(calorie_data))],
     })
     
+    df['ds'] = pd.to_datetime(df['ds'])
+    
     # 초 단위가 0이 아닌 경우들 제외
     df['second'] = df['ds'].dt.second
     df = df[df.second == 0]
