@@ -1053,10 +1053,16 @@ async def check_db(request: UserEmailRequest):
     input_date = datetime.now() + timedelta(hours=9)
     print(input_date)
     
-    if hourly_collection.find_one({'user_email': user_email}) == None:    
-        bpm_hour, bpm_day, last_ds = create_bpm_dataframe_(user_email)
-        step_hour, step_day = create_step_dataframe_(user_email)
-        calorie_hour, calorie_day = create_calorie_dataframe_(user_email)
+    if hourly_collection.find_one({'user_email': user_email}) == None: 
+        
+        bpm_data = query_bpm_data(user_email)
+        step_data = query_step_data(user_email)
+        calorie_data = query_calorie_data(user_email)
+        
+           
+        bpm_hour, bpm_day, last_ds = create_bpm_dataframe_(bpm_data)
+        step_hour, step_day = create_step_dataframe_(step_data)
+        calorie_hour, calorie_day = create_calorie_dataframe_(calorie_data)
         
         hour_df = pd.concat([bpm_hour, step_hour, calorie_hour], axis=0).sort_values('ds').reset_index(drop=True).groupby('ds', as_index=False).first()
         day_df = pd.concat([bpm_day, step_day, calorie_day], axis=0).sort_values('ds').reset_indeX(drop=True).groupby('ds', as_index=False).first()
