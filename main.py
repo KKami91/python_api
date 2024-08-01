@@ -847,10 +847,18 @@ async def get_prediction_data(user_email: str, prediction_date: str):
         raise HTTPException(status_code=400, detail="Invalid date format")
 
 
+@app.get("/check_dates/{user_email}")
+async def get_dates(user_email: str):
+    dates = hourly_collection.distinct("date", {"user_email": user_email})
+    return {"dates": [date for date in dates]}
+
+
 @app.get("/analysis_dates/{user_email}")
 async def get_analysis_dates(user_email: str):
     dates = analysis_collection.distinct("analysis_date", {"user_email": user_email})
     return {"dates": [date for date in dates]}
+
+
 
 @app.get("/analysis_data/{user_email}/{analysis_date}")
 async def get_analysis_data(user_email: str, analysis_date: str):
