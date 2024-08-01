@@ -57,6 +57,236 @@ step_collection = db.step_results
 sleep_collection = db.sleep_results
 calorie_collection = db.calorie_results
 
+####### 일 / 시간 테스트 #######
+daily_collection = db.daily
+hourly_collection = db.hourly
+
+def query_bpm_data(user_email: str):
+    bpm_items = []
+    last_evaluated_key = None
+    
+    try:
+        while True:
+            query_params = {
+                'TableName': TABLE_NAME,
+                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+                'ExpressionAttributeValues': {
+                    ':pk': {'S': f'U#{user_email}'},
+                    ':sk_prefix': {'S': f'HeartRateRecord#'},
+                },
+                'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+            }
+            
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+            
+            response = dynamodb.query(**query_params)
+            
+            bpm_items.extend(response['Items'])
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key:
+                break
+        
+        # 원래 순서로 되돌리기
+        bpm_items.reverse()
+        
+        return bpm_items
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+    
+def query_step_data(user_email: str):
+    step_items = []
+    last_evaluated_key = None
+    
+    try:
+        while True:
+            query_params = {
+                'TableName': TABLE_NAME,
+                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+                'ExpressionAttributeValues': {
+                    ':pk': {'S': f'U#{user_email}'},
+                    ':sk_prefix': {'S': f'StepsRecord#'},
+                },
+                'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+            }
+            
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+            
+            response = dynamodb.query(**query_params)
+            
+            step_items.extend(response['Items'])
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key:
+                break
+        
+        # 원래 순서로 되돌리기
+        step_items.reverse()
+        
+        return step_items
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+    
+def query_calorie_data(user_email: str):
+    calorie_items = []
+    last_evaluated_key = None
+    
+    try:
+        while True:
+            query_params = {
+                'TableName': TABLE_NAME,
+                'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+                'ExpressionAttributeValues': {
+                    ':pk': {'S': f'U#{user_email}'},
+                    ':sk_prefix': {'S': f'TotalCaloriesBurnedRecord#'},
+                },
+                'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+            }
+            
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+            
+            response = dynamodb.query(**query_params)
+            
+            calorie_items.extend(response['Items'])
+            
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key:
+                break
+        
+        # 원래 순서로 되돌리기
+        calorie_items.reverse()
+        
+        return calorie_items
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+       
+def query_one_data(user_email: str):
+    try:
+        query_params = {
+            'TableName': TABLE_NAME,
+            'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
+            'ExpressionAttributeValues': {
+                ':pk': {'S': f'U#{user_email}'},
+                ':sk_prefix': {'S': f'HeartRateRecord#'},
+            },
+            'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
+            'Limit': 1  # 딱 1개의 항목만 요청
+        }
+        
+        response = dynamodb.query(**query_params)
+        
+        if response['Items']:
+            return response['Items'][0]  # 첫 번째(가장 최신) 항목만 반환
+        else:
+            return None  # 결과가 없을 경우
+    except ClientError as e:
+        print(f"An error occurred: {e.response['Error']['Message']}")
+        return None
+
+def calc_hrv(group):
+    rr_intervals = 60000 / group['bpm'].values
+    peaks = nk.intervals_to_peaks(rr_intervals)
+    hrv = nk.hrv_time(peaks)
+    return pd.Series({
+        'rmssd': hrv['HRV_RMSSD'].values[0],
+        'sdnn': hrv['HRV_SDNN'].values[0],
+    })
+
+def create_bpm_dataframe_(bpm_data):
+    if not bpm_data:
+        raise HTTPException(status_code=404, detail="유저 정보 없음")
+    
+    df = pd.DataFrame({
+        'ds': [bpm_data[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(bpm_data))],
+        'bpm': [int(bpm_data[x]['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N']) for x in range(len(bpm_data))]
+    })
+    
+    df['ds'] = pd.to_datetime(df['ds'])
+    
+    last_ds = list(df['ds'])[-1]
+    
+    grouped_hour = df.groupby(df['ds'].dt.floor('h'))
+    bpm_hour = np.round(grouped_hour['bpm'].mean(), 3)
+    hrv_hour = grouped_hour.apply(calc_hrv)
+    
+    grouped_day = df.groupby(df['ds'].dt.floor('d'))
+    bpm_day = np.round(grouped_day['bpm'].mean(), 3)
+    hrv_day = grouped_day.apply(calc_hrv)
+    
+    # 매 시간으로 BPM 평균..? 
+    hour_df = pd.DataFrame({
+        'ds': bpm_hour.index,
+        'bpm': bpm_hour.values,
+        'rmssd': hrv_hour['rmssd'].values,
+        'sdnn': hrv_hour['sdnn'].values,
+    })
+    
+    day_df = pd.DataFrame({
+        'ds': bpm_day.index,
+        'bpm': bpm_day.values,
+        'rmssd': hrv_day['rmssd'].values,
+        'sdnn': hrv_day['sdnn'].values,
+    })
+    
+    return hour_df, day_df, last_ds
+    
+def create_step_dataframe_(step_data):
+    if not step_data:
+        raise HTTPException(status_code=404, detail="유저 정보 없음")
+    
+    df = pd.DataFrame({
+        'ds': [step_data[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(step_data))],
+        'step': [int(step_data[x]['recordInfo']['M']['count']['N']) for x in range(len(step_data))],
+    })
+    
+    df['ds'] = pd.to_datetime(df['ds'])
+    
+    # 초 단위가 0이 아닌 경우들 제외
+    df['second'] = df['ds'].dt.second
+    df = df[df.second == 0]
+    
+    hour_df = df.groupby(df['ds'].dt.floor('h')).agg({
+        'step': 'sum',
+    }).reset_index()
+    
+    day_df = df.groupby(df['ds'].dt.floor('d')).agg({
+        'step': 'sum',
+    }).reset_index()
+    
+    return hour_df, day_df
+
+def create_calorie_dataframe_(calorie_data):
+    if not calorie_data:
+        raise HTTPException(status_code=404, detail="유저 정보 없음")
+    
+    df = pd.DataFrame({
+        'ds': [calorie_data[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(calorie_data))],
+        'calorie': [np.round(float(calorie_data[x]['recordInfo']['M']['energy']['M']['value']['N'])) for x in range(len(calorie_data))],
+    })
+    
+    # 초 단위가 0이 아닌 경우들 제외
+    df['second'] = df['ds'].dt.second
+    df = df[df.second == 0]
+    
+    hour_df = df.groupby(df['ds'].dt.floor('h')).agg({
+        'calorie': 'sum',
+    }).reset_index()
+    
+    day_df = df.groupby(df['ds'].dt.floor('d')).agg({
+        'calorie': 'sum',
+    }).reset_index()
+    
+    return hour_df, day_df
+
+################################
+
+
 # 시간을 한국 시간으로 변형 (칼로리, 심박수)
 def conv_ds(startTime):
     startTime = startTime.replace('T', ' ')
@@ -813,160 +1043,208 @@ async def check_db(request: UserEmailRequest):
     user_email = request.user_email
     print(user_email)
     input_date = datetime.now() + timedelta(hours=9)
-    print(input_date);
+    print(input_date)
+    
+    if hourly_collection.find_one({'user_email': user_email}) == None:    
+        bpm_hour, bpm_day, last_ds = create_bpm_dataframe_(user_email)
+        step_hour, step_day = create_step_dataframe_(user_email)
+        calorie_hour, calorie_day = create_calorie_dataframe_(user_email)
+        
+        hour_df = pd.concat([bpm_hour, step_hour, calorie_hour], axis=0).sort_values('ds').reset_index(drop=True).groupby('ds', as_index=False).first()
+        day_df = pd.concat([bpm_day, step_day, calorie_day], axis=0).sort_values('ds').reset_indeX(drop=True).groupby('ds', as_index=False).first()
+        
+        hourly_collection.insert_one({
+            'user_email': user_email,
+            'date': str(input_date.year) + '-' + str(input_date.month).zfill(2) + '-' + str(input_date.day).zfill(2) + ' ' + str(input_date.hour).zfill(2) + ':' + str(input_date.minute).zfill(2) + ':' + str(input_date.second).zfill(2),
+            'data': hour_df.to_dict('records'),
+        })
+        
+        daily_collection.insert_one({
+            'user_email': user_email,
+            'date': str(input_date.year) + '-' + str(input_date.month).zfill(2) + '-' + str(input_date.day).zfill(2) + ' ' + str(input_date.hour).zfill(2) + ':' + str(input_date.minute).zfill(2) + ':' + str(input_date.second).zfill(2),
+            'data': day_df.to_dict('records'),
+        })
+        
+        return {'message': '데이터 저장 완료'}
+        
+
+    if last_ds == pd.to_datetime(query_one_data):
+        return {'message': '동기화할 데이터가 없습니다.'}
+    
+    else:
+        bpm_hour, bpm_day, last_ds = create_bpm_dataframe_(user_email)
+        step_hour, step_day = create_step_dataframe_(user_email)
+        calorie_hour, calorie_day = create_calorie_dataframe_(user_email)
+        
+        hour_df = pd.concat([bpm_hour, step_hour, calorie_hour], axis=0).sort_values('ds').reset_index(drop=True).groupby('ds', as_index=False).first()
+        day_df = pd.concat([bpm_day, step_day, calorie_day], axis=0).sort_values('ds').reset_indeX(drop=True).groupby('ds', as_index=False).first()
+        
+        hourly_collection.insert_one({
+            'user_email': user_email,
+            'date': str(input_date.year) + '-' + str(input_date.month).zfill(2) + '-' + str(input_date.day).zfill(2) + ' ' + str(input_date.hour).zfill(2) + ':' + str(input_date.minute).zfill(2) + ':' + str(input_date.second).zfill(2),
+            'data': hour_df.to_dict('records'),
+        })
+        
+        daily_collection.insert_one({
+            'user_email': user_email,
+            'date': str(input_date.year) + '-' + str(input_date.month).zfill(2) + '-' + str(input_date.day).zfill(2) + ' ' + str(input_date.hour).zfill(2) + ':' + str(input_date.minute).zfill(2) + ':' + str(input_date.second).zfill(2),
+            'data': day_df.to_dict('records'),
+        })
+        
+        return {'message': '동기화 완료'}
 
     # 시간 체크
     
-    # analysis, predict collection 동시에 처리하기에 하나로만 처리? 
-    if prediction_collection.find_one({"user_email": user_email}) == None:
+    # # analysis, predict collection 동시에 처리하기에 하나로만 처리? 
+    # if prediction_collection.find_one({"user_email": user_email}) == None:
 
-        ##################### CALORIE ###################################
-        # 칼로리 데이터 query 시간 체크
-        start_time = time.time()
-        mongo_new_calorie_data = query_latest_calorie_data(user_email)
-        end_time = time.time()
-        print(f'칼로리 데이터 query 걸린 시간(query_latest_calorie_data) : {(end_time - start_time):.4f}')
+    #     ##################### CALORIE ###################################
+    #     # 칼로리 데이터 query 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_calorie_data = query_latest_calorie_data(user_email)
+    #     end_time = time.time()
+    #     print(f'칼로리 데이터 query 걸린 시간(query_latest_calorie_data) : {(end_time - start_time):.4f}')
         
-        # 칼로리 데이터프레임 만드는 시간 체크
-        start_time = time.time()
-        mongo_new_calorie_df = create_calorie_dataframe(mongo_new_calorie_data)
-        end_time = time.time()
-        print(f'칼로리 데이터프레임 만드는데 걸린 시간(create_calorie_dataframe) : {(end_time - start_time):.4f}')
-        ##################### CALORIE ###################################
+    #     # 칼로리 데이터프레임 만드는 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_calorie_df = create_calorie_dataframe(mongo_new_calorie_data)
+    #     end_time = time.time()
+    #     print(f'칼로리 데이터프레임 만드는데 걸린 시간(create_calorie_dataframe) : {(end_time - start_time):.4f}')
+    #     ##################### CALORIE ###################################
         
-        ##################### HRV ###################################
-        # 1분 BPM query 걸린 시간 체크
-        start_time = time.time()
-        mongo_new_data = query_latest_heart_rate_data(user_email)
-        end_time = time.time()
-        print(f'1분 BPM 데이터 query 걸린 시간(query_latest_heart_rate_data) : {(end_time - start_time):.4f}')
+    #     ##################### HRV ###################################
+    #     # 1분 BPM query 걸린 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_data = query_latest_heart_rate_data(user_email)
+    #     end_time = time.time()
+    #     print(f'1분 BPM 데이터 query 걸린 시간(query_latest_heart_rate_data) : {(end_time - start_time):.4f}')
         
-        # 1분 BPM 데이터프레임 만드는데 걸린 시간 체크
-        start_time = time.time()
-        mongo_new_df = create_heart_rate_dataframe(mongo_new_data)
-        end_time = time.time()
-        print(f'1분 BPM 데이터프레임 만드는 데 걸린 시간(create_heart_rate_dataframe) : {(end_time - start_time):.4f}')
+    #     # 1분 BPM 데이터프레임 만드는데 걸린 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_df = create_heart_rate_dataframe(mongo_new_data)
+    #     end_time = time.time()
+    #     print(f'1분 BPM 데이터프레임 만드는 데 걸린 시간(create_heart_rate_dataframe) : {(end_time - start_time):.4f}')
         
-        # 1분 BPM 데이터 feature 계산 걸린 시간 체크
-        start_time = time.time()
-        mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
-        end_time = time.time()
-        print(f'1분 BPM 데이터 time_feature 계산 걸린 시간(preprocess_analysis) : {(end_time - start_time):.4f}')
+    #     # 1분 BPM 데이터 feature 계산 걸린 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
+    #     end_time = time.time()
+    #     print(f'1분 BPM 데이터 time_feature 계산 걸린 시간(preprocess_analysis) : {(end_time - start_time):.4f}')
         
-        # 1분 BPM 데이터 prophet 예측 걸린 시간 체크
-        start_time = time.time()
-        mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
-        end_time = time.time()
-        print(f'1분 BPM 데이터 prophet 예측 걸린 시간(predict_heart_rate) : {(end_time - start_time):.4f}')        
+    #     # 1분 BPM 데이터 prophet 예측 걸린 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
+    #     end_time = time.time()
+    #     print(f'1분 BPM 데이터 prophet 예측 걸린 시간(predict_heart_rate) : {(end_time - start_time):.4f}')        
         
-        ##################### HRV ###################################
+    #     ##################### HRV ###################################
         
-        ##################### STEP ###################################
-        # 걸음수 데이터 query 걸린 시간 체크
-        start_time = time.time()
-        mongo_new_step_data = query_latest_step_data(user_email)
-        end_time = time.time()
-        print(f'걸음수 데이터 query 걸린 시간(query_latest_step_data) : {(end_time - start_time):.4f}')
+    #     ##################### STEP ###################################
+    #     # 걸음수 데이터 query 걸린 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_step_data = query_latest_step_data(user_email)
+    #     end_time = time.time()
+    #     print(f'걸음수 데이터 query 걸린 시간(query_latest_step_data) : {(end_time - start_time):.4f}')
         
-        # 걸음수 데이터프레임 만드는데 걸린 시간 체크
-        start_time = time.time()
-        mongo_new_step_df = create_step_dataframe(mongo_new_step_data)       
-        end_time = time.time()
-        print(f'걸음수 데이터 데이터프레임 만드는데 걸린 시간(create_step_dataframe) : {(end_time - start_time):.4f}')       
-        ##################### STEP ###################################
+    #     # 걸음수 데이터프레임 만드는데 걸린 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_step_df = create_step_dataframe(mongo_new_step_data)       
+    #     end_time = time.time()
+    #     print(f'걸음수 데이터 데이터프레임 만드는데 걸린 시간(create_step_dataframe) : {(end_time - start_time):.4f}')       
+    #     ##################### STEP ###################################
             
-        ##################### SLEEP ###################################
-        # 수면 데이터 query 걸린 시간 체크
-        start_time = time.time()
-        mongo_new_sleep_data = query_latest_sleep_data(user_email)
-        end_time = time.time()
-        print(f'수면 데이터 query 걸린 시간(query_latest_sleep_data) : {(end_time - start_time):.4f}')
+    #     ##################### SLEEP ###################################
+    #     # 수면 데이터 query 걸린 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_sleep_data = query_latest_sleep_data(user_email)
+    #     end_time = time.time()
+    #     print(f'수면 데이터 query 걸린 시간(query_latest_sleep_data) : {(end_time - start_time):.4f}')
         
-        # 수면 데이터 query 걸린 시간 체크
-        start_time = time.time()
-        mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
-        end_time = time.time()
-        print(f'수면 데이터프레임 만드는데 걸린 시간(create_sleep_dataframe) : {(end_time - start_time):.4f}')
-        ##################### SLEEP ###################################
+    #     # 수면 데이터 query 걸린 시간 체크
+    #     start_time = time.time()
+    #     mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
+    #     end_time = time.time()
+    #     print(f'수면 데이터프레임 만드는데 걸린 시간(create_sleep_dataframe) : {(end_time - start_time):.4f}')
+    #     ##################### SLEEP ###################################
         
         
-        # 칼로리 데이터 몽고DB 저장 걸린 시간 체크
-        start_time = time.time()
-        save_calorie_to_mongodb(user_email, mongo_new_calorie_df, input_date) # 칼로리 데이터 저장
-        end_time = time.time()
-        print(f'칼로리 데이터 몽고DB 저장 걸린 시간(save_calorie_to_mongodb) : {(end_time - start_time):.4f}')
+    #     # 칼로리 데이터 몽고DB 저장 걸린 시간 체크
+    #     start_time = time.time()
+    #     save_calorie_to_mongodb(user_email, mongo_new_calorie_df, input_date) # 칼로리 데이터 저장
+    #     end_time = time.time()
+    #     print(f'칼로리 데이터 몽고DB 저장 걸린 시간(save_calorie_to_mongodb) : {(end_time - start_time):.4f}')
         
-        # 분석 데이터 몽고DB 저장 걸린 시간 체크
-        start_time = time.time()       
-        save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
-        end_time = time.time()
-        print(f'분석 데이터 몽고DB 저장 걸린 시간(save_analysis_to_mongodb) : {(end_time - start_time):.4f}')
+    #     # 분석 데이터 몽고DB 저장 걸린 시간 체크
+    #     start_time = time.time()       
+    #     save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
+    #     end_time = time.time()
+    #     print(f'분석 데이터 몽고DB 저장 걸린 시간(save_analysis_to_mongodb) : {(end_time - start_time):.4f}')
         
-        # 예측 데이터 몽고DB 저장 걸린 시간 체크
-        start_time = time.time()
-        save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
-        end_time = time.time()
-        print(f'예측 데이터 몽고DB 저장 걸린 시간(save_prediction_to_mongodb) : {(end_time - start_time):.4f}')
+    #     # 예측 데이터 몽고DB 저장 걸린 시간 체크
+    #     start_time = time.time()
+    #     save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
+    #     end_time = time.time()
+    #     print(f'예측 데이터 몽고DB 저장 걸린 시간(save_prediction_to_mongodb) : {(end_time - start_time):.4f}')
         
-        # 걸음수 데이터 몽고DB 저장 걸린 시간 체크
-        start_time = time.time()
-        save_step_to_mongodb(user_email, mongo_new_step_df, input_date) # 걸음수 데이터 저장
-        end_time = time.time()
-        print(f'걸음수 데이터 몽고DB 저장 걸린 시간(save_step_to_mongodb) : {(end_time - start_time):.4f}')
+    #     # 걸음수 데이터 몽고DB 저장 걸린 시간 체크
+    #     start_time = time.time()
+    #     save_step_to_mongodb(user_email, mongo_new_step_df, input_date) # 걸음수 데이터 저장
+    #     end_time = time.time()
+    #     print(f'걸음수 데이터 몽고DB 저장 걸린 시간(save_step_to_mongodb) : {(end_time - start_time):.4f}')
         
-        # 수면 데이터 몽고DB 저장 걸린 시간 체크
-        start_time = time.time()
-        save_sleep_to_mongodb(user_email, mongo_new_sleep_df, input_date) # 수면 데이터 저장
-        end_time = time.time()
-        print(f'수면 데이터 몽고DB 저장 걸린 시간(save_sleep_to_mongodb) : {(end_time - start_time):.4f}')
+    #     # 수면 데이터 몽고DB 저장 걸린 시간 체크
+    #     start_time = time.time()
+    #     save_sleep_to_mongodb(user_email, mongo_new_sleep_df, input_date) # 수면 데이터 저장
+    #     end_time = time.time()
+    #     print(f'수면 데이터 몽고DB 저장 걸린 시간(save_sleep_to_mongodb) : {(end_time - start_time):.4f}')
         
-        return {'message': '데이터 저장 완료'}
+    #     return {'message': '데이터 저장 완료'}
     
-    last_data = list(prediction_collection.find({"user_email": user_email}))[-1] # 최신 데이터의 마지막 data를 선택
-    print(f'last_data: {last_data}')
-    datetime_last = last_data['data'][-4321]['ds'] # 그 데이터의 예측값을 제외한 마지막 값
-    last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
+    # last_data = list(prediction_collection.find({"user_email": user_email}))[-1] # 최신 데이터의 마지막 data를 선택
+    # print(f'last_data: {last_data}')
+    # datetime_last = last_data['data'][-4321]['ds'] # 그 데이터의 예측값을 제외한 마지막 값
+    # last_date = str(datetime_last.year) + '-' + str(datetime_last.month).zfill(2) + '-' + str(datetime_last.day).zfill(2) + ' ' + str(datetime_last.hour).zfill(2) + ':' + str(datetime_last.minute).zfill(2) + ':' + str(datetime_last.second).zfill(2)
     
-    # DynamoDB에 마지막 데이터와 collection에 -4321번째의 데이터가 같다면 최대 40000개의 query를 하지 않음
-    if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
-        return {'message': '새로운 데이터가 없습니다.'}
-    # 만약 다르다면 : 새로 동기화된 데이터가 있다면..
-    else:
+    # # DynamoDB에 마지막 데이터와 collection에 -4321번째의 데이터가 같다면 최대 40000개의 query를 하지 않음
+    # if last_date == conv_ds(query_one_heart_rate_data(user_email)['SK']['S'].split('#')[1]) :
+    #     return {'message': '새로운 데이터가 없습니다.'}
+    # # 만약 다르다면 : 새로 동기화된 데이터가 있다면..
+    # else:
         
-        ##################### CALORIE ###################################
-        mongo_new_calorie_data = query_latest_calorie_data(user_email)
-        mongo_new_calorie_df = create_calorie_dataframe(mongo_new_calorie_data)
-        ##################### CALORIE ###################################
+    #     ##################### CALORIE ###################################
+    #     mongo_new_calorie_data = query_latest_calorie_data(user_email)
+    #     mongo_new_calorie_df = create_calorie_dataframe(mongo_new_calorie_data)
+    #     ##################### CALORIE ###################################
         
-        ##################### HRV ###################################
+    #     ##################### HRV ###################################
 
-        mongo_new_data = query_latest_heart_rate_data(user_email)
+    #     mongo_new_data = query_latest_heart_rate_data(user_email)
 
-        mongo_new_df = create_heart_rate_dataframe(mongo_new_data)
+    #     mongo_new_df = create_heart_rate_dataframe(mongo_new_data)
 
-        mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
+    #     mongo_new_hrv_analysis = preprocess_analysis(mongo_new_df) # 분석
 
-        mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
+    #     mongo_new_forecast = predict_heart_rate(mongo_new_df) # 예측
 
-        ##################### HRV ###################################
+    #     ##################### HRV ###################################
                 
-        ##################### STEP ###################################
-        mongo_new_step_data = query_latest_step_data(user_email)
-        mongo_new_step_df = create_step_dataframe(mongo_new_step_data)       
-        ##################### STEP ###################################
+    #     ##################### STEP ###################################
+    #     mongo_new_step_data = query_latest_step_data(user_email)
+    #     mongo_new_step_df = create_step_dataframe(mongo_new_step_data)       
+    #     ##################### STEP ###################################
         
-        ##################### SLEEP ###################################
-        mongo_new_sleep_data = query_latest_sleep_data(user_email)
-        mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
-        ##################### SLEEP ###################################
+    #     ##################### SLEEP ###################################
+    #     mongo_new_sleep_data = query_latest_sleep_data(user_email)
+    #     mongo_new_sleep_df = create_sleep_dataframe(mongo_new_sleep_data)
+    #     ##################### SLEEP ###################################
         
-        save_calorie_to_mongodb(user_email, mongo_new_calorie_df, input_date) # 칼로리 데이터 저장
-        save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
-        save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
-        save_step_to_mongodb(user_email, mongo_new_step_df, input_date) # 걸음수 데이터 저장
-        save_sleep_to_mongodb(user_email, mongo_new_sleep_df, input_date) # 수면 데이터 저장
+    #     save_calorie_to_mongodb(user_email, mongo_new_calorie_df, input_date) # 칼로리 데이터 저장
+    #     save_analysis_to_mongodb(user_email, mongo_new_hrv_analysis, input_date) # 분석 데이터 저장
+    #     save_prediction_to_mongodb(user_email, mongo_new_forecast, input_date) # 예측 데이터 저장
+    #     save_step_to_mongodb(user_email, mongo_new_step_df, input_date) # 걸음수 데이터 저장
+    #     save_sleep_to_mongodb(user_email, mongo_new_sleep_df, input_date) # 수면 데이터 저장
         
-        return {'message': '데이터 저장 완료'}
+    #     return {'message': '데이터 저장 완료'}
     
         
 if __name__ == "__main__":
