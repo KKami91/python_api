@@ -1067,7 +1067,7 @@ async def check_db(request: UserEmailRequest):
         calorie_hour, calorie_day = create_calorie_dataframe_(calorie_data)
         
         hour_df = pd.concat([bpm_hour, step_hour, calorie_hour], axis=0).sort_values('ds').reset_index(drop=True).groupby('ds', as_index=False).first()
-        day_df = pd.concat([bpm_day, step_day, calorie_day], axis=0).sort_values('ds').reset_indeX(drop=True).groupby('ds', as_index=False).first()
+        day_df = pd.concat([bpm_day, step_day, calorie_day], axis=0).sort_values('ds').reset_index(drop=True).groupby('ds', as_index=False).first()
         
         hourly_collection.insert_one({
             'user_email': user_email,
