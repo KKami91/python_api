@@ -1086,8 +1086,9 @@ async def check_db(request: UserEmailRequest):
         
         return {'message': '데이터 저장 완료'}
         
-
-    if last_ds == pd.to_datetime(query_one_data):
+    print(f'last_ds : {last_ds}')
+    
+    if last_ds == pd.to_datetime(query_one_data(user_email)):
         return {'message': '동기화할 데이터가 없습니다.'}
     
     else:
