@@ -166,7 +166,7 @@ def query_calorie_data(user_email: str):
         print(f"An error occurred: {e.response['Error']['Message']}")
         return None
        
-def query_one_data(user_email: str):
+def query_one_data(user_email: str, recond_name: str):
     try:
         query_params = {
             'TableName': TABLE_NAME,
@@ -1086,9 +1086,18 @@ async def check_db(request: UserEmailRequest):
         
         return {'message': '데이터 저장 완료'}
         
-    print(f'last_ds : {last_ds}')
+    dict_compare = {'bpm': 'HeartRateRecord', 'rmssd': 'HeartRateRecord', 'sdnn': 'HeartRateRecord', 'step': 'StepsRecord', 'calorie': 'TotalCaloriesBurnedRecord'}
+    last_data_idx = [list(hour_df.to_dict('records')[-1].values())[1:][x] == None for x in range(len(hour_df.to_dict('records')[-1].values())[1:])].indeX(False)
+    last_data_name = list(hour_df.to_dict('records')[-1].keys())[1:][last_data_idx]
+    record_name = dict_compare[last_data_name]
     
-    if last_ds == pd.to_datetime(query_one_data(user_email)):
+    # 데이터 비교군 쿼리 데이터의 마지막 startTime
+    record_query = pd.to_datetime(query_one_data(user_email, record_name)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    
+    # hourly data의 마지막 date
+    last_ds = pd.to_datetime(hour_df.to_dict('records')[-1]['ds']['$date'].replace('T', ' ')[:19])
+    
+    if last_ds.hour == record_query.hour and last_ds.day == record_query.day:
         return {'message': '동기화할 데이터가 없습니다.'}
     
     else:
