@@ -1119,14 +1119,29 @@ async def check_db(request: UserEmailRequest):
     record_query = pd.to_datetime(query_one_data(user_email, record_name)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
     
 
+    print('record_query: ', record_query)
+    print('record_query.hour: ', record_query.hour)
+    print('record_query.day: ', record_query.day)
+    
+    print('latest_date', latest_date)
+    print('latest_date.hour', latest_date.hour)
+    print('latest_date.day', latest_date.day)
+    
+    print('latest_date.hour == record_query.hour', latest_date.hour == record_query.hour)
+    print('latest_date.day == record_query.day', latest_date.day == record_query.day)
     
     if latest_date.hour == record_query.hour and latest_date.day == record_query.day:
         return {'message': '동기화할 데이터가 없습니다.'}
     
     else:
-        bpm_hour, bpm_day, last_ds = create_bpm_dataframe_(user_email)
-        step_hour, step_day = create_step_dataframe_(user_email)
-        calorie_hour, calorie_day = create_calorie_dataframe_(user_email)
+        bpm_data = query_bpm_data(user_email)
+        step_data = query_step_data(user_email)
+        calorie_data = query_calorie_data(user_email)
+        
+           
+        bpm_hour, bpm_day, last_ds = create_bpm_dataframe_(bpm_data)
+        step_hour, step_day = create_step_dataframe_(step_data)
+        calorie_hour, calorie_day = create_calorie_dataframe_(calorie_data)
         
         hour_df = pd.concat([bpm_hour, step_hour, calorie_hour], axis=0).sort_values('ds').reset_index(drop=True).groupby('ds', as_index=False).first()
         day_df = pd.concat([bpm_day, step_day, calorie_day], axis=0).sort_values('ds').reset_index(drop=True).groupby('ds', as_index=False).first()
@@ -1146,7 +1161,7 @@ async def check_db(request: UserEmailRequest):
             'data': day_df.to_dict('records'),
         })
         
-        return {'message': '동기화 완료'}
+        return {'message': '데이터 저장 완료'}
 
 
     # 시간 체크
