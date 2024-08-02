@@ -1106,7 +1106,7 @@ async def check_db(request: UserEmailRequest):
     latest_value = list(latest_doc['last_data_point'].values())[1:]
     
     latest_data_idx = [latest_value[x] == None for x in range(len(latest_value))]
-    latest_date = pd.to_datetime(latest_doc['last_data_poinrt']['ds'])
+    latest_date = pd.to_datetime(latest_doc['last_data_point']['ds'])
     # collection 최신 데이터의 마지막 데이터 중 None값이 아닌 첫 번째 데이터 index를 통해 query_one_data로 비교군 체크
     record_name = dict_compare[latest_key[latest_data_idx]]
         
