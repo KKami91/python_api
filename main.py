@@ -1095,7 +1095,8 @@ async def check_db(request: UserEmailRequest):
     record_query = pd.to_datetime(query_one_data(user_email, record_name)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
     
     # hourly data의 마지막 date
-    last_ds = pd.to_datetime(hour_df.to_dict('records')[-1]['ds']['$date'].replace('T', ' ')[:19])
+    print(list(hour_df['ds'])[-1])
+    last_ds = pd.to_datetime(list(hour_df['ds'])[-1])
     
     if last_ds.hour == record_query.hour and last_ds.day == record_query.day:
         return {'message': '동기화할 데이터가 없습니다.'}
