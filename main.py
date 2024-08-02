@@ -1085,11 +1085,35 @@ async def check_db(request: UserEmailRequest):
         })
         
         return {'message': '데이터 저장 완료'}
-        
+    
+    
+    # collection 최신 데이터 반환
+    query_data = list(db.hourly.aggregate([
+        {'$match': {'user_email': user_email}},
+        {'$sort': {'date': -1}},
+        {'$limit': 1},
+        {'$project': {
+            'latest_date': '$date',
+            'last_data_point': {'$arrayElemAt': ['$data', -1]}
+        }}
+    ]))
+    
     dict_compare = {'bpm': 'HeartRateRecord', 'rmssd': 'HeartRateRecord', 'sdnn': 'HeartRateRecord', 'step': 'StepsRecord', 'calorie': 'TotalCaloriesBurnedRecord'}
-    last_data_idx = [list(hour_df.to_dict('records')[-1].values())[1:][x] == None for x in range(len(hour_df.to_dict('records')[-1].values())[1:])].index(False)
-    last_data_name = list(hour_df.to_dict('records')[-1].keys())[1:][last_data_idx]
-    record_name = dict_compare[last_data_name]
+    
+    
+    latest_doc = query_data[0]
+    latest_key = list(latest_doc['last_data_point'].keys())[1:]
+    latest_value = list(latest_doc['last_data_point'].values())[1:]
+    
+    latest_data_idx = [latest_value[x] == None for x in range(len(latest_value))]
+    latest_date = pd.to_datetime(latest_doc['last_data_poinrt']['ds'])
+    # collection 최신 데이터의 마지막 데이터 중 None값이 아닌 첫 번째 데이터 index를 통해 query_one_data로 비교군 체크
+    record_name = dict_compare[latest_key[latest_data_idx]]
+        
+    # dict_compare = {'bpm': 'HeartRateRecord', 'rmssd': 'HeartRateRecord', 'sdnn': 'HeartRateRecord', 'step': 'StepsRecord', 'calorie': 'TotalCaloriesBurnedRecord'}
+    # last_data_idx = [list(hour_df.to_dict('records')[-1].values())[1:][x] == None for x in range(len(hour_df.to_dict('records')[-1].values())[1:])].index(False)
+    # last_data_name = list(hour_df.to_dict('records')[-1].keys())[1:][last_data_idx]
+    # record_name = dict_compare[last_data_name]
     
     # 데이터 비교군 쿼리 데이터의 마지막 startTime
     record_query = pd.to_datetime(query_one_data(user_email, record_name)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
@@ -1098,7 +1122,7 @@ async def check_db(request: UserEmailRequest):
     print(list(hour_df['ds'])[-1])
     last_ds = pd.to_datetime(list(hour_df['ds'])[-1])
     
-    if last_ds.hour == record_query.hour and last_ds.day == record_query.day:
+    if latest_date.hour == record_query.hour and latest_date.day == record_query.day:
         return {'message': '동기화할 데이터가 없습니다.'}
     
     else:
