@@ -166,14 +166,14 @@ def query_calorie_data(user_email: str):
         print(f"An error occurred: {e.response['Error']['Message']}")
         return None
        
-def query_one_data(user_email: str, recond_name: str):
+def query_one_data(user_email: str, record_name: str):
     try:
         query_params = {
             'TableName': TABLE_NAME,
             'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
             'ExpressionAttributeValues': {
                 ':pk': {'S': f'U#{user_email}'},
-                ':sk_prefix': {'S': f'HeartRateRecord#'},
+                ':sk_prefix': {'S': f'{record_name}#'},
             },
             'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
             'Limit': 1  # 딱 1개의 항목만 요청
