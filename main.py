@@ -1087,7 +1087,7 @@ async def check_db(request: UserEmailRequest):
         return {'message': '데이터 저장 완료'}
         
     dict_compare = {'bpm': 'HeartRateRecord', 'rmssd': 'HeartRateRecord', 'sdnn': 'HeartRateRecord', 'step': 'StepsRecord', 'calorie': 'TotalCaloriesBurnedRecord'}
-    last_data_idx = [list(hour_df.to_dict('records')[-1].values())[1:][x] == None for x in range(len(hour_df.to_dict('records')[-1].values())[1:])].indeX(False)
+    last_data_idx = [list(hour_df.to_dict('records')[-1].values())[1:][x] == None for x in range(len(hour_df.to_dict('records')[-1].values())[1:])].index(False)
     last_data_name = list(hour_df.to_dict('records')[-1].keys())[1:][last_data_idx]
     record_name = dict_compare[last_data_name]
     
