@@ -1118,9 +1118,7 @@ async def check_db(request: UserEmailRequest):
     # 데이터 비교군 쿼리 데이터의 마지막 startTime
     record_query = pd.to_datetime(query_one_data(user_email, record_name)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
     
-    # hourly data의 마지막 date
-    print(list(hour_df['ds'])[-1])
-    last_ds = pd.to_datetime(list(hour_df['ds'])[-1])
+
     
     if latest_date.hour == record_query.hour and latest_date.day == record_query.day:
         return {'message': '동기화할 데이터가 없습니다.'}
