@@ -279,7 +279,7 @@ def create_bpm_dataframe_(bpm_data):
     model_hrmssd.fit(pred_hour_df[:])
     
     future_hrmssd = model_hrmssd.make_future_dataframe(periods=24*3, freq='h')
-    forecast_hrmssd = model_hbpm.predict(future_hrmssd)
+    forecast_hrmssd = model_hrmssd.predict(future_hrmssd)
     
 
     new_hour_df = pd.merge(new_hour_df, forecast_hrmssd[['ds','yhat']], on='ds', how='left')
@@ -298,7 +298,7 @@ def create_bpm_dataframe_(bpm_data):
         interval_width=0.95
     )
     
-    model_dbpm.add_seasonality(name='hourly', period=24, fourier_order=7) # 수정 필요 가능성
+    model_dbpm.add_seasonality(name='monthly', period=30.5, fourier_order=7) # 수정 필요 가능성
     model_dbpm.add_country_holidays(country_name='KOR')
     model_dbpm.fit(pred_day_df[:])
     
@@ -325,7 +325,7 @@ def create_bpm_dataframe_(bpm_data):
         interval_width=0.95
     )
     
-    model_drmssd.add_seasonality(name='hourly', period=24, fourier_order=7) # 수정 필요 가능성
+    model_drmssd.add_seasonality(name='monthly', period=30.5, fourier_order=7) # 수정 필요 가능성
     model_drmssd.add_country_holidays(country_name='KOR')
     model_drmssd.fit(pred_day_df[:])
     
