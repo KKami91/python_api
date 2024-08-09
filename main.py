@@ -255,7 +255,7 @@ def create_bpm_dataframe_(bpm_data):
     
     ds_df = pd.DataFrame({'ds': [forecast['ds'][x] for x in range(len(forecast))]})
     new_hour_df = pd.merge(ds_df, hour_df[['ds','bpm','rmssd','sdnn']], on='ds', how='left')
-    new_hour_df = pd.merge(new_hour_df, forecast[['yhat']], on='ds', how='left')
+    new_hour_df = pd.merge(new_hour_df, forecast[['ds','yhat']], on='ds', how='left')
     
     new_hour_df = new_hour_df.rename(columns={'yhat':'pred_bpm'})
     
