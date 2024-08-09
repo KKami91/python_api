@@ -234,9 +234,11 @@ def create_bpm_dataframe_(bpm_data):
         'sdnn': hrv_day['sdnn'].values,
     })
     
+    
+    ############ BPM Hour Prediction ##########
     pred_hour_df = hour_df.rename(columns={'bpm':'y'})
     
-    model = Prophet(
+    model_hbpm = Prophet(
         changepoint_prior_scale=0.01,
         seasonality_mode='multiplicative',
         daily_seasonality=True,
@@ -245,21 +247,97 @@ def create_bpm_dataframe_(bpm_data):
         interval_width=0.95
     )
     
-    model.add_seasonality(name='hourly', period=24, fourier_order=7)
-    model.add_country_holidays(country_name='KOR')
-    #length_ = int(len(pred_hour_df)*0.9)
-    model.fit(pred_hour_df[:])
+    model_hbpm.add_seasonality(name='hourly', period=24, fourier_order=7)
+    model_hbpm.add_country_holidays(country_name='KOR')
+    model_hbpm.fit(pred_hour_df[:])
     
-    future = model.make_future_dataframe(periods=24*3, freq='h')
-    forecast = model.predict(future)
+    future_hbpm = model_hbpm.make_future_dataframe(periods=24*3, freq='h')
+    forecast_hbpm = model_hbpm.predict(future_hbpm)
     
-    ds_df = pd.DataFrame({'ds': [forecast['ds'][x] for x in range(len(forecast))]})
+    ds_df = pd.DataFrame({'ds': [forecast_hbpm['ds'][x] for x in range(len(forecast_hbpm))]})
     new_hour_df = pd.merge(ds_df, hour_df[['ds','bpm','rmssd','sdnn']], on='ds', how='left')
-    new_hour_df = pd.merge(new_hour_df, forecast[['ds','yhat']], on='ds', how='left')
-    
+    new_hour_df = pd.merge(new_hour_df, forecast_hbpm[['ds','yhat']], on='ds', how='left')
     new_hour_df = new_hour_df.rename(columns={'yhat':'pred_bpm'})
     
-    return new_hour_df, day_df, last_ds
+    pred_hour_df = hour_df.rename(columns={'y':'bpm'})
+    ############## BPM Hour Prediction End ##############
+    
+    ############## RMSSD Hour Prediction #################
+    pred_hour_df = hour_df.rename(columns={'rmssd':'y'})
+    
+    model_hrmssd = Prophet(
+        changepoint_prior_scale=0.01,
+        seasonality_mode='multiplicative',
+        daily_seasonality=True,
+        weekly_seasonality=True,
+        yearly_seasonality=True,
+        interval_width=0.95
+    )
+    
+    model_hrmssd.add_seasonality(name='hourly', period=24, fourier_order=7)
+    model_hrmssd.add_country_holidays(country_name='KOR')
+    model_hrmssd.fit(pred_hour_df[:])
+    
+    future_hrmssd = model_hrmssd.make_future_dataframe(periods=24*3, freq='h')
+    forecast_hrmssd = model_hbpm.predict(future_hrmssd)
+    
+
+    new_hour_df = pd.merge(new_hour_df, forecast_hrmssd[['ds','yhat']], on='ds', how='left')
+    new_hour_df = new_hour_df.rename(columns={'yhat':'pred_rmssd'})
+    ################# RMSSD Hour Prediction End ############
+    
+    ################# BPM Day Prediction ############ (임시로...)
+    pred_day_df = day_df.rename(columns={'bpm':'y'})
+    
+    model_dbpm = Prophet(
+        changepoint_prior_scale=0.01,
+        seasonality_mode='multiplicative',
+        daily_seasonality=True,
+        weekly_seasonality=True,
+        yearly_seasonality=True,
+        interval_width=0.95
+    )
+    
+    model_dbpm.add_seasonality(name='hourly', period=24, fourier_order=7) # 수정 필요 가능성
+    model_dbpm.add_country_holidays(country_name='KOR')
+    model_dbpm.fit(pred_day_df[:])
+    
+    future_dbpm = model_dbpm.make_future_dataframe(periods=5, freq='d') # 5일 예측
+    forecast_dbpm = model_dbpm.predict(future_dbpm)
+    
+    ds_df = pd.DataFrame({'ds': [forecast_dbpm['ds'][x] for x in range(len(forecast_dbpm))]})
+    new_day_df = pd.merge(ds_df, day_df[['ds','bpm','rmssd','sdnn']], on='ds', how='left')
+    new_day_df = pd.merge(new_day_df, forecast_dbpm[['ds','yhat']], on='ds', how='left')
+    new_day_df = new_day_df.rename(columns={'yhat':'pred_bpm'})
+    
+    pred_day_df = hour_df.rename(columns={'y':'bpm'})
+    ################# BPM Day Prediction End ###########
+    
+    ################# BPM Day Prediction ############ (임시로...)
+    pred_day_df = day_df.rename(columns={'rmssd':'y'})
+    
+    model_drmssd = Prophet(
+        changepoint_prior_scale=0.01,
+        seasonality_mode='multiplicative',
+        daily_seasonality=True,
+        weekly_seasonality=True,
+        yearly_seasonality=True,
+        interval_width=0.95
+    )
+    
+    model_drmssd.add_seasonality(name='hourly', period=24, fourier_order=7) # 수정 필요 가능성
+    model_drmssd.add_country_holidays(country_name='KOR')
+    model_drmssd.fit(pred_day_df[:])
+    
+    future_drmssd = model_drmssd.make_future_dataframe(periods=5, freq='d') # 5일 예측
+    forecast_drmssd = model_drmssd.predict(future_drmssd)
+    
+    new_day_df = pd.merge(new_day_df, forecast_drmssd[['ds','yhat']], on='ds', how='left')
+    new_day_df = new_day_df.rename(columns={'yhat':'pred_rmssd'})
+
+    ################# BPM Day Prediction End ###########
+    
+    return new_hour_df, new_day_df, last_ds
     
 def create_step_dataframe_(step_data):
     if not step_data:
