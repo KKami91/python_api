@@ -1201,15 +1201,28 @@ async def check_db(request: UserEmailRequest):
         }}
     ]))
     
+    print('query_data', query_data)
+    
     dict_compare = {'bpm': 'HeartRateRecord', 'rmssd': 'HeartRateRecord', 'sdnn': 'HeartRateRecord', 'step': 'StepsRecord', 'calorie': 'TotalCaloriesBurnedRecord'}
     
     
+    
+    
     latest_doc = query_data[0]
+    print('latest_doc', latest_doc)
+    
     latest_key = list(latest_doc['last_data_point'].keys())[1:]
+    print('latest_key', latest_key)
+    
     latest_value = list(latest_doc['last_data_point'].values())[1:]
+    print('latest_value', latest_value)
     
     latest_data_idx = [latest_value[x] == None for x in range(len(latest_value))].index(False)
+    print('latest_data_idx', latest_data_idx)
+    
     latest_date = pd.to_datetime(latest_doc['last_data_point']['ds'])
+    print('latest_date', latest_date)
+    
     # collection 최신 데이터의 마지막 데이터 중 None값이 아닌 첫 번째 데이터 index를 통해 query_one_data로 비교군 체크
     record_name = dict_compare[latest_key[latest_data_idx]]
         
