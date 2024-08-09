@@ -247,10 +247,10 @@ def create_bpm_dataframe_(bpm_data):
     
     model.add_seasonality(name='hourly', period=24, fourier_order=7)
     model.add_country_holidays(country_name='KOR')
-    length_ = int(len(pred_hour_df)*0.9)
-    model.fit(pred_hour_df[:length_])
+    #length_ = int(len(pred_hour_df)*0.9)
+    model.fit(pred_hour_df[:])
     
-    future = model.make_future_dataframe(periods=len(pred_hour_df)-length_, freq='h')
+    future = model.make_future_dataframe(periods=24*3, freq='h')
     forecast = model.predict(future)
     
     ds_df = pd.DataFrame({'ds': [forecast['ds'][x] for x in range(len(forecast))]})
