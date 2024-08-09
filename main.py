@@ -234,7 +234,32 @@ def create_bpm_dataframe_(bpm_data):
         'sdnn': hrv_day['sdnn'].values,
     })
     
-    return hour_df, day_df, last_ds
+    pred_hour_df = hour_df.rename(columns={'bpm':'y'})
+    
+    model = Prophet(
+        changepoint_prior_scale=0.01,
+        seasonality_mode='multiplicative',
+        daily_seasonality=True,
+        weekly_seasonality=True,
+        yearly_seasonality=True,
+        interval_width=0.95
+    )
+    
+    model.add_seasonality(name='hourly', period=24, fourier_order=7)
+    model.add_country_holidays(country_name='KOR')
+    length_ = int(len(pred_hour_df)*0.9)
+    model.fit(pred_hour_df[:length_])
+    
+    future = model.make_future_dataframe(periods=len(pred_hour_df)-length_, freq='h')
+    forecast = model.predict(future)
+    
+    ds_df = pd.DataFrame({'ds': pred_hour_df['ds'][x] for x in range(len(pred_hour_df))})
+    new_hour_df = pd.merge(ds_df, hour_df[['ds','bpm','rmssd','sdnn']], on='ds', how='left')
+    new_hour_df = pd.merge(new_hour_df, forecast[['yhat']], on='ds', how='left')
+    
+    new_hour_df = new_hour_df.rename(columns={'yhat':'pred_bpm'})
+    
+    return new_hour_df, day_df, last_ds
     
 def create_step_dataframe_(step_data):
     if not step_data:
