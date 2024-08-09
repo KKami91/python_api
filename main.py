@@ -166,14 +166,14 @@ def query_calorie_data(user_email: str):
         print(f"An error occurred: {e.response['Error']['Message']}")
         return None
        
-def query_one_data(user_email: str, record_name: str):
+def query_one_data(user_email: str):
     try:
         query_params = {
             'TableName': TABLE_NAME,
             'KeyConditionExpression': 'PK = :pk AND begins_with(SK, :sk_prefix)',
             'ExpressionAttributeValues': {
                 ':pk': {'S': f'U#{user_email}'},
-                ':sk_prefix': {'S': f'{record_name}#'},
+                ':sk_prefix': {'S': f'HeartRateRecord#'},
             },
             'ScanIndexForward': False,  # 역순으로 정렬 (최신 데이터부터)
             'Limit': 1  # 딱 1개의 항목만 요청
@@ -1203,28 +1203,32 @@ async def check_db(request: UserEmailRequest):
     
     print('query_data', query_data)
     
-    dict_compare = {'bpm': 'HeartRateRecord', 'rmssd': 'HeartRateRecord', 'sdnn': 'HeartRateRecord', 'step': 'StepsRecord', 'calorie': 'TotalCaloriesBurnedRecord'}
+    # dict_compare = {'bpm': 'HeartRateRecord', 'rmssd': 'HeartRateRecord', 'sdnn': 'HeartRateRecord', 'step': 'StepsRecord', 'calorie': 'TotalCaloriesBurnedRecord'}
     
     
     
     
-    latest_doc = query_data[0]
-    print('latest_doc', latest_doc)
+    # latest_doc = query_data[0]
+    # print('latest_doc', latest_doc)
     
-    latest_key = list(latest_doc['last_data_point'].keys())[1:]
-    print('latest_key', latest_key)
+    # latest_key = list(latest_doc['last_data_point'].keys())[1:]
+    # print('latest_key', latest_key)
     
-    latest_value = list(latest_doc['last_data_point'].values())[1:]
-    print('latest_value', latest_value)
+    # latest_value = list(latest_doc['last_data_point'].values())[1:]
+    # print('latest_value', latest_value)
     
-    latest_data_idx = [latest_value[x] == None for x in range(len(latest_value))].index(False)
-    print('latest_data_idx', latest_data_idx)
+    # latest_data_idx = [latest_value[x] == None for x in range(len(latest_value))].index(False)
+    # print('latest_data_idx', latest_data_idx)
     
-    latest_date = pd.to_datetime(latest_doc['last_data_point']['ds'])
-    print('latest_date', latest_date)
+    # latest_date = pd.to_datetime(latest_doc['last_data_point']['ds'])
+    # print('latest_date', latest_date)
+    
+    query_last_ds = query_data[0]['last_data_point']['ds']
+    query_sub72 = query_last_ds - timedelta(hours=72)
     
     # collection 최신 데이터의 마지막 데이터 중 None값이 아닌 첫 번째 데이터 index를 통해 query_one_data로 비교군 체크
-    record_name = dict_compare[latest_key[latest_data_idx]]
+    # record_name = dict_compare[latest_key[latest_data_idx]]
+        
         
     # dict_compare = {'bpm': 'HeartRateRecord', 'rmssd': 'HeartRateRecord', 'sdnn': 'HeartRateRecord', 'step': 'StepsRecord', 'calorie': 'TotalCaloriesBurnedRecord'}
     # last_data_idx = [list(hour_df.to_dict('records')[-1].values())[1:][x] == None for x in range(len(hour_df.to_dict('records')[-1].values())[1:])].index(False)
@@ -1232,21 +1236,9 @@ async def check_db(request: UserEmailRequest):
     # record_name = dict_compare[last_data_name]
     
     # 데이터 비교군 쿼리 데이터의 마지막 startTime
-    record_query = pd.to_datetime(query_one_data(user_email, record_name)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    # record_query = pd.to_datetime(query_one_data(user_email, record_name)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
     
-
-    print('record_query: ', record_query)
-    print('record_query.hour: ', record_query.hour)
-    print('record_query.day: ', record_query.day)
-    
-    print('latest_date', latest_date)
-    print('latest_date.hour', latest_date.hour)
-    print('latest_date.day', latest_date.day)
-    
-    print('latest_date.hour == record_query.hour', latest_date.hour == record_query.hour)
-    print('latest_date.day == record_query.day', latest_date.day == record_query.day)
-    
-    if latest_date.hour == record_query.hour and latest_date.day == record_query.day:
+    if pd.to_datetime(query_sub72) == pd.to_datetime(query_one_data(user_email)):
         return {'message': '동기화할 데이터가 없습니다.'}
     
     else:
