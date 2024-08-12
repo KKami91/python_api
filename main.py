@@ -1223,8 +1223,8 @@ async def check_db(request: UserEmailRequest):
     # latest_date = pd.to_datetime(latest_doc['last_data_point']['ds'])
     # print('latest_date', latest_date)
     
-    query_last_ds = query_data[0]['last_data_point']['ds']
-    query_sub72 = query_last_ds - timedelta(hours=72)
+    mongo_last_ds = query_data[0]['last_data_point']['ds']
+    # query_sub72 = query_last_ds - timedelta(hours=72)
     
     # collection 최신 데이터의 마지막 데이터 중 None값이 아닌 첫 번째 데이터 index를 통해 query_one_data로 비교군 체크
     # record_name = dict_compare[latest_key[latest_data_idx]]
@@ -1238,7 +1238,10 @@ async def check_db(request: UserEmailRequest):
     # 데이터 비교군 쿼리 데이터의 마지막 startTime
     # record_query = pd.to_datetime(query_one_data(user_email, record_name)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
     
-    if pd.to_datetime(query_sub72) == pd.to_datetime(query_one_data(user_email)):
+    # dynamodb_last_time = query_one_data(user_email)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19].floor('h')
+    
+    # MongoDB 해당 유저 마지막 data ds와 dynamodb 최신 데이터 startTime + 72시간 비교 (prophet을 마지막 bpm으로부터 72개를 구했으므로)
+    if (pd.to_datetime(mongo_last_ds) == pd.to_datetime(query_one_data(user_email)['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19]).floor('h') + timedelta(hours=72)) == True:
         return {'message': '동기화할 데이터가 없습니다.'}
     
     else:
