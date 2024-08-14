@@ -548,7 +548,7 @@ async def bpm_hour_feature(user_email: str):
     mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
     mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
 
-    hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=180)]
+    hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=180)]
     hour_group = hour_df.groupby(hour_df['ds'].dt.floor('h'))
     hour_hrv = hour_group.apply(calc_hrv).reset_index()
     
@@ -563,7 +563,7 @@ async def bpm_day_feature(user_email: str):
     mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
     mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
 
-    day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=730)]
+    day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=730)]
     day_group = day_df.groupby(day_df['ds'].dt.floor('d'))
     day_hrv = day_group.apply(calc_hrv).reset_index()
     
