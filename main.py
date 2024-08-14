@@ -398,7 +398,7 @@ async def bpm_minute_predict(user_email: str):
     min_forecast.rename(columns={'yhat': 'min_pred_bpm'}, inplace=True)
     min_forecast['min_pred_bpm'] = np.round(min_forecast['min_pred_bpm'], 3)
         
-    return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
+    return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']][len(min_forecast) - 60*24*3:].to_dict('records')}
     
     
     
@@ -428,13 +428,13 @@ async def bpm_hour_predict(user_email: str):
     hour_model.add_country_holidays(country_name='KOR')
     hour_model.fit(hour_df)
     
-    hour_future = hour_model.make_future_dataframe(periods=10, freq='d')
+    hour_future = hour_model.make_future_dataframe(periods=72, freq='h')
     hour_forecast = hour_model.predict(hour_future)
     
     hour_forecast.rename(columns={'yhat': 'hour_pred_bpm'}, inplace=True)
     hour_forecast['hour_pred_bpm'] = np.round(hour_forecast['hour_pred_bpm'], 3)
         
-    return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']].to_dict('records')}
+    return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']][len(hour_forecast) - 72:].to_dict('records')}
         
         
 @app.get("/predict_day/{user_email}")
@@ -463,13 +463,13 @@ async def bpm_day_predict(user_email: str):
     day_model.add_country_holidays(country_name='KOR')
     day_model.fit(day_df)
     
-    day_future = day_model.make_future_dataframe(periods=30, freq='d')
+    day_future = day_model.make_future_dataframe(periods=3, freq='d')
     day_forecast = day_model.predict(day_future)
     
     day_forecast.rename(columns={'yhat': 'day_pred_bpm'}, inplace=True)
     day_forecast['day_pred_bpm'] = np.round(day_forecast['day_pred_bpm'], 3)
         
-    return {'day_pred_bpm': day_forecast[['ds', 'day_pred_bpm']].to_dict('records')}
+    return {'day_pred_bpm': day_forecast[['ds', 'day_pred_bpm']][len(day_forecast) - 30:].to_dict('records')}
         
         
     # # elif types == 'hour':
