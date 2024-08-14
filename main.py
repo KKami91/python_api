@@ -397,8 +397,10 @@ async def bpm_minute_predict(user_email: str):
     
     min_forecast.rename(columns={'yhat': 'min_pred_bpm'}, inplace=True)
     min_forecast['min_pred_bpm'] = np.round(min_forecast['min_pred_bpm'], 3)
+    
+    min_forecast = min_forecast[len(min_forecast) - 60*24*3:]
         
-    return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']][len(min_forecast) - 60*24*3:].to_dict('records')}
+    return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
     
     
     
