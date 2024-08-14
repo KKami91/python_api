@@ -367,7 +367,7 @@ async def check_db_query(request: UserEmailRequest):
 
 
 
-@app.post("/predict_minute/{user_email}")
+@app.get("/predict_minute/{user_email}")
 async def bpm_minute_predict(user_email: str):
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
     
@@ -402,7 +402,7 @@ async def bpm_minute_predict(user_email: str):
     
     
     
-@app.post("/predict_hour/{user_email}")
+@app.get("/predict_hour/{user_email}")
 async def bpm_hour_predict(user_email: str):
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
     
@@ -437,7 +437,7 @@ async def bpm_hour_predict(user_email: str):
     return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']].to_dict('records')}
         
         
-@app.post("/predict_day/{user_email}")
+@app.get("/predict_day/{user_email}")
 async def bpm_day_predict(user_email: str):
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
     
@@ -540,7 +540,7 @@ def nk_group(group_):
     })
     
    
-@app.post("/feature_hour/{user_email}")
+@app.get("/feature_hour/{user_email}")
 async def bpm_hour_feature(user_email: str):
     
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
@@ -555,7 +555,7 @@ async def bpm_hour_feature(user_email: str):
     return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
     
     
-@app.post("/feature_day/{user_email}")
+@app.get("/feature_day/{user_email}")
 async def bpm_day_feature(user_email: str):
     
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
