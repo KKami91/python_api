@@ -199,28 +199,28 @@ async def check_db_query(request: UserEmailRequest):
         all_sleep_df['ds_start'] = pd.to_datetime(all_sleep_df['ds_start'])
         all_sleep_df['ds_end'] = pd.to_datetime(all_sleep_df['ds_end'])
         
-        all_bpm_df.insert_one({
+        bpm_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
             'last_date': list(all_bpm_df['ds'])[-1],
             'data': all_bpm_df.to_dict('records'),
         })
         
-        all_step_df.insert_one({
+        step_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
             'last_date': list(all_step_df['ds'])[-1],
             'data': all_step_df.to_dict('records'),
         })
         
-        all_calorie_df.insert_one({
+        calorie_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
             'last_date': list(all_calorie_df['ds'])[-1],
             'data': all_calorie_df.to_dict('records'),
         })
         
-        all_sleep_df.insert_one({
+        sleep_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
             'last_date': pd.to_datetime(sleep_query[-1]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19]),
