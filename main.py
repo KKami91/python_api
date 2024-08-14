@@ -378,7 +378,7 @@ async def bpm_minute_predict(user_email: str):
     
     # if types == 'min':
     
-    min_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=30)]
+    min_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=30)]
     
     min_model = Prophet(
         changepoint_prior_scale=0.01,
@@ -413,7 +413,7 @@ async def bpm_hour_predict(user_email: str):
     
     # if types == 'min':
     
-    hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=180)]
+    hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=180)]
     hour_df = hour_df.groupby(hour_df['ds'].dt.floor('h')).agg({'y':'mean'}).reset_index()
     
     hour_model = Prophet(
@@ -448,7 +448,7 @@ async def bpm_day_predict(user_email: str):
     
     # if types == 'min':
     
-    day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=730)]
+    day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=730)]
     day_df = day_df.groupby(day_df['ds'].dt.floor('d')).agg({'y':'mean'}).reset_index()
     
     day_model = Prophet(
