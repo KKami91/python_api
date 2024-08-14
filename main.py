@@ -496,7 +496,7 @@ async def bpm_feature(user_email: str):
     # return {'day_hrv': day_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records')}
     
     return {
-        'min_hrv': None,
+        #'min_hrv': None,
         'hour_hrv': hour_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records'),
         'day_hrv': day_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records'),
     }
