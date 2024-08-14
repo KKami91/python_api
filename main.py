@@ -199,12 +199,20 @@ async def check_db_query(request: UserEmailRequest):
         all_sleep_df['ds_start'] = pd.to_datetime(all_sleep_df['ds_start'])
         all_sleep_df['ds_end'] = pd.to_datetime(all_sleep_df['ds_end'])
         
+        print(all_step_df)
+        print(all_calorie_df)
+        print(all_sleep_df)
+        
         bpm_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
             'last_date': list(all_bpm_df['ds'])[-1],
             'data': all_bpm_df.to_dict('records'),
         })
+        
+        print('bpm 저장 후...')
+        
+        print('step data: ', all_step_df['data'])
         
         step_collection.insert_one({
             'user_email': user_email,
@@ -213,6 +221,12 @@ async def check_db_query(request: UserEmailRequest):
             'data': all_step_df.to_dict('records'),
         })
         
+        
+        print('step 저장 후')
+        
+        print('step data: ', all_step_df['data'])
+        
+        
         calorie_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
@@ -220,12 +234,18 @@ async def check_db_query(request: UserEmailRequest):
             'data': all_calorie_df.to_dict('records'),
         })
         
+        print('칼로리 저장 후')
+        
+        print('step data: ', all_calorie_df['data'])
+        
         sleep_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
             'last_date': pd.to_datetime(sleep_query[-1]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19]),
             'data': all_sleep_df.to_dict('records'),
         })
+        
+        print('수면 저장 완료')
         
         return {'message': '데이터 저장 완료'}
     
