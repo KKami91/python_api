@@ -161,7 +161,7 @@ def one_query(user_email: str, record_name: str):
 async def check_db_query(request: UserEmailRequest):
     
     user_email = request.user_email
-    request_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    request_time = (datetime.now() + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
     
     ############## 유저 데이터 X -> 전체 데이터 쿼리 ##############
@@ -259,6 +259,7 @@ async def check_db_query(request: UserEmailRequest):
         query_sleeps_last_ds = pd.to_datetime(one_query(user_email, record_names[3])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
         
         if mongo_bpm_last_ds == query_bpm_last_ds:
+            print('bpm 업데이트 데이터 없음')
             pass
         else:
             new_bpm = new_query(user_email, record_names[0], str(mongo_bpm_last_ds).replace(' ', 'T'))
@@ -285,6 +286,7 @@ async def check_db_query(request: UserEmailRequest):
             )
             
         if mongo_steps_last_ds == query_steps_last_ds:
+            print('걸음수 업데이트 데이터 없음')
             pass
         else:
             new_steps = new_query(user_email, record_names[1], str(mongo_steps_last_ds).replace(' ', 'T'))
@@ -311,6 +313,7 @@ async def check_db_query(request: UserEmailRequest):
             )
         
         if mongo_calories_last_ds == query_calories_last_ds:
+            print('칼로리소모량 업데이트 데이터 없음')
             pass
         else:
             new_calories = new_query(user_email, record_names[2], str(mongo_calories_last_ds).replace(' ', 'T'))
@@ -335,6 +338,7 @@ async def check_db_query(request: UserEmailRequest):
             )
         
         if mongo_sleeps_last_ds == query_sleeps_last_ds:
+            print('수면 업데이트 데이터 없음')
             pass
         else:
             new_sleeps = new_query(user_email, record_names[3], str(mongo_sleeps_last_ds).replace(' ', 'T'))
