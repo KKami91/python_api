@@ -199,9 +199,7 @@ async def check_db_query(request: UserEmailRequest):
         all_sleep_df['ds_start'] = pd.to_datetime(all_sleep_df['ds_start'])
         all_sleep_df['ds_end'] = pd.to_datetime(all_sleep_df['ds_end'])
         
-        print(all_step_df)
-        print(all_calorie_df)
-        print(all_sleep_df)
+
         
         bpm_collection.insert_one({
             'user_email': user_email,
@@ -212,9 +210,9 @@ async def check_db_query(request: UserEmailRequest):
         
         print('bpm 저장 후...')
         
-        print('step data: ', all_step_df['data'])
+
         
-        step_collection.insert_one({
+        steps_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
             'last_date': list(all_step_df['ds'])[-1],
@@ -224,10 +222,10 @@ async def check_db_query(request: UserEmailRequest):
         
         print('step 저장 후')
         
-        print('step data: ', all_step_df['data'])
+
         
         
-        calorie_collection.insert_one({
+        calories_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
             'last_date': list(all_calorie_df['ds'])[-1],
@@ -236,9 +234,9 @@ async def check_db_query(request: UserEmailRequest):
         
         print('칼로리 저장 후')
         
-        print('step data: ', all_calorie_df['data'])
+
         
-        sleep_collection.insert_one({
+        sleeps_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
             'last_date': pd.to_datetime(sleep_query[-1]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19]),
