@@ -367,8 +367,8 @@ async def check_db_query(request: UserEmailRequest):
 
 
 
-@app.post("/predict/{user_email}/{types}")
-async def bpm_predict(user_email: str, types='min'):
+@app.post("/predict/{user_email}")
+async def bpm_predict(user_email: str):
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
     
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
@@ -468,8 +468,8 @@ def nk_group(group_):
     })
     
    
-@app.post("/feature/{user_email}/{types}")
-async def bpm_feature(user_email: str, types='min'):
+@app.post("/feature/{user_email}")
+async def bpm_feature(user_email: str):
     
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
