@@ -367,8 +367,8 @@ async def check_db_query(request: UserEmailRequest):
 
 
 
-@app.post("/predict/{user_email}")
-async def bpm_predict(user_email: str):
+@app.post("/predict_minute/{user_email}")
+async def bpm_minute_predict(user_email: str):
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
     
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
@@ -395,13 +395,24 @@ async def bpm_predict(user_email: str):
     min_future = min_model.make_future_dataframe(periods=60*24*3, freq='min')
     min_forecast = min_model.predict(min_future)
     
-    min_forecast.rename(columns={'yhat': 'pred_bpm'}, inplace=True)
-    min_forecast['pred_bpm'] = np.round(min_forecast['pred_bpm'], 3)
+    min_forecast.rename(columns={'yhat': 'min_pred_bpm'}, inplace=True)
+    min_forecast['min_pred_bpm'] = np.round(min_forecast['min_pred_bpm'], 3)
         
-        # return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
+    return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
     
-    # elif types == 'hour':
-        
+    
+    
+@app.post("/predict_hour/{user_email}")
+async def bpm_hour_predict(user_email: str):
+    mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
+    
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')    
+    mongo_bpm_df.rename(columns={'bpm': 'y'}, inplace=True)
+    mongo_bpm_df = mongo_bpm_df.astype({'y': 'int32'})
+    
+    # if types == 'min':
+    
     hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=180)]
     hour_df = hour_df.groupby(hour_df['ds'].dt.floor('h')).agg({'y':'mean'}).reset_index()
     
@@ -420,12 +431,22 @@ async def bpm_predict(user_email: str):
     hour_future = hour_model.make_future_dataframe(periods=10, freq='d')
     hour_forecast = hour_model.predict(hour_future)
     
-    hour_forecast.rename(columns={'yhat': 'pred_bpm'}, inplace=True)
-    hour_forecast['pred_bpm'] = np.round(hour_forecast['pred_bpm'], 3)
+    hour_forecast.rename(columns={'yhat': 'hour_pred_bpm'}, inplace=True)
+    hour_forecast['hour_pred_bpm'] = np.round(hour_forecast['hour_pred_bpm'], 3)
         
-        # return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']].to_dict('records')}
+    return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']].to_dict('records')}
+        
+        
+@app.post("/predict_day/{user_email}")
+async def bpm_day_predict(user_email: str):
+    mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
     
-    # elif types == 'day':
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')    
+    mongo_bpm_df.rename(columns={'bpm': 'y'}, inplace=True)
+    mongo_bpm_df = mongo_bpm_df.astype({'y': 'int32'})
+    
+    # if types == 'min':
     
     day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=730)]
     day_df = day_df.groupby(day_df['ds'].dt.floor('d')).agg({'y':'mean'}).reset_index()
@@ -445,16 +466,67 @@ async def bpm_predict(user_email: str):
     day_future = day_model.make_future_dataframe(periods=30, freq='d')
     day_forecast = day_model.predict(day_future)
     
-    day_forecast.rename(columns={'yhat': 'pred_bpm'}, inplace=True)
-    day_forecast['pred_bpm'] = np.round(day_forecast['pred_bpm'], 3)
+    day_forecast.rename(columns={'yhat': 'day_pred_bpm'}, inplace=True)
+    day_forecast['day_pred_bpm'] = np.round(day_forecast['day_pred_bpm'], 3)
         
-        # return {'day_pred_bpm': day_forecast[['ds', 'day_pred_bpm']].to_dict('records')}
+    return {'day_pred_bpm': day_forecast[['ds', 'day_pred_bpm']].to_dict('records')}
+        
+        
+    # # elif types == 'hour':
+        
+    # hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=180)]
+    # hour_df = hour_df.groupby(hour_df['ds'].dt.floor('h')).agg({'y':'mean'}).reset_index()
+    
+    # hour_model = Prophet(
+    #     changepoint_prior_scale=0.01,
+    #     seasonality_mode='multiplicative',
+    #     daily_seasonality=True,
+    #     weekly_seasonality=True,
+    #     yearly_seasonality=True,
+    #     interval_width=0.95
+    # )
+    # hour_model.add_seasonality(name='hourly', period=24, fourier_order=7)
+    # hour_model.add_country_holidays(country_name='KOR')
+    # hour_model.fit(hour_df)
+    
+    # hour_future = hour_model.make_future_dataframe(periods=10, freq='d')
+    # hour_forecast = hour_model.predict(hour_future)
+    
+    # hour_forecast.rename(columns={'yhat': 'pred_bpm'}, inplace=True)
+    # hour_forecast['pred_bpm'] = np.round(hour_forecast['pred_bpm'], 3)
+        
+    #     # return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']].to_dict('records')}
+    
+    # # elif types == 'day':
+    
+    # day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=730)]
+    # day_df = day_df.groupby(day_df['ds'].dt.floor('d')).agg({'y':'mean'}).reset_index()
+    
+    # day_model = Prophet(
+    #     changepoint_prior_scale=0.01,
+    #     seasonality_mode='multiplicative',
+    #     daily_seasonality=True,
+    #     weekly_seasonality=True,
+    #     yearly_seasonality=True,
+    #     interval_width=0.95
+    # )
+    # day_model.add_seasonality(name='hourly', period=24, fourier_order=7)
+    # day_model.add_country_holidays(country_name='KOR')
+    # day_model.fit(day_df)
+    
+    # day_future = day_model.make_future_dataframe(periods=30, freq='d')
+    # day_forecast = day_model.predict(day_future)
+    
+    # day_forecast.rename(columns={'yhat': 'pred_bpm'}, inplace=True)
+    # day_forecast['pred_bpm'] = np.round(day_forecast['pred_bpm'], 3)
+        
+    #     # return {'day_pred_bpm': day_forecast[['ds', 'day_pred_bpm']].to_dict('records')}
 
-    return {
-        'min_pred_bpm': min_forecast[['ds', 'pred_bpm']].to_dict('records'), 
-        'hour_pred_bpm': hour_forecast[['ds', 'pred_bpm']].to_dict('records'), 
-        'day_pred_bpm': day_forecast[['ds', 'pred_bpm']].to_dict('records'),
-    }
+    # return {
+    #     'min_pred_bpm': min_forecast[['ds', 'pred_bpm']].to_dict('records'), 
+    #     'hour_pred_bpm': hour_forecast[['ds', 'pred_bpm']].to_dict('records'), 
+    #     'day_pred_bpm': day_forecast[['ds', 'pred_bpm']].to_dict('records'),
+    # }
         
 
 def nk_group(group_):
@@ -468,38 +540,40 @@ def nk_group(group_):
     })
     
    
-@app.post("/feature/{user_email}")
-async def bpm_feature(user_email: str):
+@app.post("/feature_hour/{user_email}")
+async def bpm_hour_feature(user_email: str):
     
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
     mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
     mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
-    
-    # if types == 'min':
-        # return {'message': '분 단위의 HRV 계산 불가...'}
-        
-    # elif types == 'hour':
-        
+
     hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=180)]
     hour_group = hour_df.groupby(hour_df['ds'].dt.floor('h'))
     hour_hrv = hour_group.apply(calc_hrv).reset_index()
     
-    # return {'hour_hrv': hour_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records')}
+    return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
     
-    # elif types == 'day':
-        
+    
+@app.post("/feature_day/{user_email}")
+async def bpm_day_feature(user_email: str):
+    
+    mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
+    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
+
     day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] >= timedelta(days=730)]
     day_group = day_df.groupby(day_df['ds'].dt.floor('d'))
     day_hrv = day_group.apply(calc_hrv).reset_index()
     
-    # return {'day_hrv': day_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records')}
+    return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
     
-    return {
-        #'min_hrv': None,
-        'hour_hrv': hour_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records'),
-        'day_hrv': day_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records'),
-    }
+    # return {
+    #     #'min_hrv': None,
+    #     'hour_hrv': hour_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records'),
+    #     'day_hrv': day_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records'),
+    # }
     
     
     
