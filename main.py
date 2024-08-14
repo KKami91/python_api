@@ -501,6 +501,19 @@ async def bpm_feature(user_email: str):
         'day_hrv': day_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records'),
     }
     
+    
+    
+@app.get("/get_save_dates/{user_email}")
+async def get_save_dates(user_email: str):
+    collections = [bpm_collection, steps_collection, calories_collection, sleeps_collection]
+    all_save_dates = set()
+
+    for collection in collections:
+        document = collection.find_one({'user_email': user_email})
+        if document and 'save_date' in document:
+            all_save_dates.add(document['save_date'])
+
+    return {"save_dates": sorted(list(all_save_dates), reverse=True)}
 
 
 def query_bpm_data(user_email: str):
