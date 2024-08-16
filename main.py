@@ -288,8 +288,8 @@ async def check_db_query(request: UserEmailRequest):
             },
             upsert=True
         )
-    end_time = time.time()
-    print(f'데이터 저장 및 save 시간 업데이트 걸린 시간 : {(end_time - start_time):.4f}')
+        end_time = time.time()
+        print(f'데이터 저장 및 save 시간 업데이트 걸린 시간 : {(end_time - start_time):.4f}')
         
     
     # else:
