@@ -166,6 +166,7 @@ async def check_db_query(request: UserEmailRequest):
     
     ############## 유저 데이터 X -> 전체 데이터 쿼리 ##############
     if bpm_collection.find_one({'user_email': user_email}) == None or steps_collection.find_one({'user_email': user_email}) == None or calories_collection.find_one({'user_email': user_email}) == None or sleeps_collection.find_one({'user_email': user_email}) == None:
+        start_time = time.time()
         if bpm_collection.find_one({'user_email': user_email}) == None:
             bpm_query = all_query(user_email, record_names[0])
             
@@ -287,19 +288,29 @@ async def check_db_query(request: UserEmailRequest):
             },
             upsert=True
         )
+    end_time = time.time()
+    print(f'데이터 저장 및 save 시간 업데이트 걸린 시간 : {(end_time - start_time):.4f}')
         
     
     # else:
+    start_time = time.time()
     mongo_bpm_last_ds = pd.to_datetime(bpm_collection.find_one({'user_email': user_email})['last_date'])
     mongo_steps_last_ds = pd.to_datetime(steps_collection.find_one({'user_email': user_email})['last_date'])
     mongo_calories_last_ds = pd.to_datetime(calories_collection.find_one({'user_email': user_email})['last_date'])
     mongo_sleeps_last_ds = pd.to_datetime(sleeps_collection.find_one({'user_email': user_email})['last_date'])
+    end_time = time.time()
+    print(f'몽고디비 마지막 last date 가져오는 시간 (4개) : {(end_time - start_time):.4f}')
     
+    start_time = time.time()
     query_bpm_last_ds = pd.to_datetime(one_query(user_email, record_names[0])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
     query_steps_last_ds = pd.to_datetime(one_query(user_email, record_names[1])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
     query_calories_last_ds = pd.to_datetime(one_query(user_email, record_names[2])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
     query_sleeps_last_ds = pd.to_datetime(one_query(user_email, record_names[3])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    end_time = time.time()
+    print(f'마지막 쿼리 하나 가져오는데 걸리는 시간 (4개) : {(end_time - start_time):.4f}')
     
+    
+    start_time = time.time()
     if mongo_bpm_last_ds == query_bpm_last_ds:
         print('bpm 업데이트 데이터 없음')
         # pass
@@ -326,7 +337,11 @@ async def check_db_query(request: UserEmailRequest):
             },
             upsert=True
         )
+    end_time = time.time()
+    print(f'BPM 데이터 업데이트 체크 걸린 시간 : {(end_time - start_time):.4f}')
         
+        
+    start_time = time.time()
     if mongo_steps_last_ds == query_steps_last_ds:
         print('걸음수 업데이트 데이터 없음')
         # pass
@@ -353,7 +368,11 @@ async def check_db_query(request: UserEmailRequest):
             },
             upsert=True
         )
+        
+    end_time = time.time()
+    print(f'step 데이터 업데이트 체크 걸린 시간 : {(end_time - start_time):.4f}')
     
+    start_time = time.time()
     if mongo_calories_last_ds == query_calories_last_ds:
         print('칼로리소모량 업데이트 데이터 없음')
         # pass
@@ -377,8 +396,12 @@ async def check_db_query(request: UserEmailRequest):
                 }
             },
             upsert=True
-        )
+        )    
+    end_time = time.time()
+    print(f'칼로리 데이터 업데이트 체크 걸린 시간 : {(end_time - start_time):.4f}')
     
+    
+    start_time = time.time()
     if mongo_sleeps_last_ds == query_sleeps_last_ds:
         print('수면 업데이트 데이터 없음')
         # pass
@@ -406,6 +429,8 @@ async def check_db_query(request: UserEmailRequest):
             },
             upsert=True
         )
+    end_time = time.time()
+    print(f'수면 데이터 업데이트 체크 걸린 시간 : {(end_time - start_time):.4f}')
 
 
 
@@ -422,6 +447,9 @@ async def bpm_minute_predict(user_email: str):
     
     min_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=30)]
     
+    print(f'min_df 길이 : {len(min_df)}')
+    
+    start_time = time.time()
     min_model = Prophet(
         changepoint_prior_scale=0.01,
         seasonality_mode='multiplicative',
@@ -437,10 +465,14 @@ async def bpm_minute_predict(user_email: str):
     min_future = min_model.make_future_dataframe(periods=60*24*3, freq='min')
     min_forecast = min_model.predict(min_future)
     
+    
     min_forecast.rename(columns={'yhat': 'min_pred_bpm'}, inplace=True)
     min_forecast['min_pred_bpm'] = np.round(min_forecast['min_pred_bpm'], 3)
     
     min_forecast = min_forecast[len(min_forecast) - 60*24*3:]
+    
+    end_time = time.time()
+    print(f'예측 모델 걸리는 시간 : {(end_time - start_time):.4f}')
         
     return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
     
