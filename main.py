@@ -509,6 +509,8 @@ async def bpm_hour_predict(user_email: str):
     
     hour_forecast.rename(columns={'yhat': 'hour_pred_bpm'}, inplace=True)
     hour_forecast['hour_pred_bpm'] = np.round(hour_forecast['hour_pred_bpm'], 3)
+    
+    print(f'in predict hour forecast data: {hour_forecast[:5]}')
         
     return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']][len(hour_forecast) - 72:].to_dict('records')}
         
