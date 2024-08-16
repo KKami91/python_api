@@ -480,6 +480,8 @@ async def bpm_minute_predict(user_email: str):
     
 @app.get("/predict_hour/{user_email}")
 async def bpm_hour_predict(user_email: str):
+    print('in predict_hour')
+    starttime = time.time()
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
     
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
@@ -509,6 +511,9 @@ async def bpm_hour_predict(user_email: str):
     
     hour_forecast.rename(columns={'yhat': 'hour_pred_bpm'}, inplace=True)
     hour_forecast['hour_pred_bpm'] = np.round(hour_forecast['hour_pred_bpm'], 3)
+    
+    endtime = time.time()
+    print(f'in predict hour 걸린 시간 : {endtime - starttime}')
     
     print(f'in predict hour forecast data: {hour_forecast[:5]}')
         
