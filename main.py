@@ -445,7 +445,7 @@ async def bpm_minute_predict(user_email: str):
     
     # if types == 'min':
     
-    min_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=30)]
+    min_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=7)]
     
     print(f'min_df 길이 : {len(min_df)}')
     
