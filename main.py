@@ -462,14 +462,14 @@ async def bpm_minute_predict(user_email: str):
     min_model.add_country_holidays(country_name='KOR')
     min_model.fit(min_df)
     
-    min_future = min_model.make_future_dataframe(periods=60*24*3, freq='min')
+    min_future = min_model.make_future_dataframe(periods=60*24*1, freq='min')
     min_forecast = min_model.predict(min_future)
     
     
     min_forecast.rename(columns={'yhat': 'min_pred_bpm'}, inplace=True)
     min_forecast['min_pred_bpm'] = np.round(min_forecast['min_pred_bpm'], 3)
     
-    min_forecast = min_forecast[len(min_forecast) - 60*24*3:]
+    min_forecast = min_forecast[len(min_forecast) - 60*24*1:]
     
     end_time = time.time()
     print(f'예측 모델 걸리는 시간 : {(end_time - start_time):.4f}')
