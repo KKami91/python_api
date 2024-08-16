@@ -165,41 +165,16 @@ async def check_db_query(request: UserEmailRequest):
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
     
     ############## 유저 데이터 X -> 전체 데이터 쿼리 ##############
+    # if bpm_collection.find_one({'user_email': user_email}) == None or steps_collection.find_one({'user_email': user_email}) == None or calories_collection.find_one({'user_email': user_email}) == None or sleeps_collection.find_one({'user_email': user_email}) == None:
     if bpm_collection.find_one({'user_email': user_email}) == None:
-        
         bpm_query = all_query(user_email, record_names[0])
-        step_query = all_query(user_email, record_names[1])
-        calorie_query = all_query(user_email, record_names[2])
-        sleep_query = all_query(user_email, record_names[3])
         
         all_bpm_df = pd.DataFrame({
             'ds': [bpm_query[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(bpm_query))],
             'bpm': [int(bpm_query[x]['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N']) for x in range(len(bpm_query))],
         })
         
-        all_step_df = pd.DataFrame({
-            'ds': [step_query[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(step_query))],
-            'step': [int(step_query[x]['recordInfo']['M']['count']['N']) for x in range(len(step_query))],
-        })
-        
-        all_calorie_df = pd.DataFrame({
-            'ds': [calorie_query[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(calorie_query))],
-            'calorie': [np.round(float(calorie_query[x]['recordInfo']['M']['energy']['M']['value']['N']), 3) for x in range(len(calorie_query))],
-        })
-        
-        all_sleep_df = pd.DataFrame({
-            'ds_start': [sleep_query[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(sleep_query)) for y in range(len(sleep_query[x]['recordInfo']['M']['stages']['L']))],
-            'ds_end': [sleep_query[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(sleep_query)) for y in range(len(sleep_query[x]['recordInfo']['M']['stages']['L']))],
-            'stage': [int(sleep_query[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(sleep_query)) for y in range(len(sleep_query[x]['recordInfo']['M']['stages']['L']))],
-        })
-        
         all_bpm_df['ds'] = pd.to_datetime(all_bpm_df['ds'])
-        all_step_df['ds'] = pd.to_datetime(all_bpm_df['ds'])
-        all_calorie_df['ds'] = pd.to_datetime(all_calorie_df['ds'])
-        all_sleep_df['ds_start'] = pd.to_datetime(all_sleep_df['ds_start'])
-        all_sleep_df['ds_end'] = pd.to_datetime(all_sleep_df['ds_end'])
-        
-
         
         bpm_collection.insert_one({
             'user_email': user_email,
@@ -210,7 +185,16 @@ async def check_db_query(request: UserEmailRequest):
         
         print('bpm 저장 후...')
         
-
+        
+    if steps_collection.find_one({'user_email': user_email}) == None:
+        step_query = all_query(user_email, record_names[1])
+        
+        all_step_df = pd.DataFrame({
+            'ds': [step_query[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(step_query))],
+            'step': [int(step_query[x]['recordInfo']['M']['count']['N']) for x in range(len(step_query))],
+        })
+        
+        all_step_df['ds'] = pd.to_datetime(all_step_df['ds'])
         
         steps_collection.insert_one({
             'user_email': user_email,
@@ -219,11 +203,19 @@ async def check_db_query(request: UserEmailRequest):
             'data': all_step_df.to_dict('records'),
         })
         
-        
         print('step 저장 후')
         
-
         
+        
+    if calories_collection.find_one({'user_email': user_email}) == None:
+        calorie_query = all_query(user_email, record_names[2])
+        
+        all_calorie_df = pd.DataFrame({
+            'ds': [calorie_query[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(calorie_query))],
+            'calorie': [np.round(float(calorie_query[x]['recordInfo']['M']['energy']['M']['value']['N']), 3) for x in range(len(calorie_query))],
+        })
+        
+        all_calorie_df['ds'] = pd.to_datetime(all_calorie_df['ds'])
         
         calories_collection.insert_one({
             'user_email': user_email,
@@ -234,136 +226,148 @@ async def check_db_query(request: UserEmailRequest):
         
         print('칼로리 저장 후')
         
-
+        
+    if sleeps_collection.find_one({'user_email': user_email}) == None:
+        sleeps_query = all_query(user_email, record_names[3])
+        
+        all_sleep_df = pd.DataFrame({
+            'ds_start': [sleeps_query[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(sleeps_query)) for y in range(len(sleeps_query[x]['recordInfo']['M']['stages']['L']))],
+            'ds_end': [sleeps_query[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(sleeps_query)) for y in range(len(sleeps_query[x]['recordInfo']['M']['stages']['L']))],
+            'stage': [int(sleeps_query[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(sleeps_query)) for y in range(len(sleeps_query[x]['recordInfo']['M']['stages']['L']))],
+        })
+        
+        all_sleep_df['ds_start'] = pd.to_datetime(all_sleep_df['ds_start'])
+        all_sleep_df['ds_end'] = pd.to_datetime(all_sleep_df['ds_end'])
         
         sleeps_collection.insert_one({
             'user_email': user_email,
             'save_date': request_time,
-            'last_date': pd.to_datetime(sleep_query[-1]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19]),
+            'last_date': pd.to_datetime(sleeps_query[-1]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19]),
             'data': all_sleep_df.to_dict('records'),
         })
         
         print('수면 저장 완료')
         
-        return {'message': '데이터 저장 완료'}
+        # return {'message': '데이터 저장 완료'}
+        
     
+    # else:
+    mongo_bpm_last_ds = pd.to_datetime(bpm_collection.find_one({'user_email': user_email})['last_date'])
+    mongo_steps_last_ds = pd.to_datetime(steps_collection.find_one({'user_email': user_email})['last_date'])
+    mongo_calories_last_ds = pd.to_datetime(calories_collection.find_one({'user_email': user_email})['last_date'])
+    mongo_sleeps_last_ds = pd.to_datetime(sleeps_collection.find_one({'user_email': user_email})['last_date'])
+    
+    query_bpm_last_ds = pd.to_datetime(one_query(user_email, record_names[0])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    query_steps_last_ds = pd.to_datetime(one_query(user_email, record_names[1])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    query_calories_last_ds = pd.to_datetime(one_query(user_email, record_names[2])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    query_sleeps_last_ds = pd.to_datetime(one_query(user_email, record_names[3])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    
+    if mongo_bpm_last_ds == query_bpm_last_ds:
+        print('bpm 업데이트 데이터 없음')
+        # pass
     else:
-        mongo_bpm_last_ds = pd.to_datetime(bpm_collection.find_one({'user_email': user_email})['last_date'])
-        mongo_steps_last_ds = pd.to_datetime(steps_collection.find_one({'user_email': user_email})['last_date'])
-        mongo_calories_last_ds = pd.to_datetime(calories_collection.find_one({'user_email': user_email})['last_date'])
-        mongo_sleeps_last_ds = pd.to_datetime(sleeps_collection.find_one({'user_email': user_email})['last_date'])
+        new_bpm = new_query(user_email, record_names[0], str(mongo_bpm_last_ds).replace(' ', 'T'))
+        new_bpm_df = pd.DataFrame({
+            'ds': [new_bpm[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_bpm))],
+            'bpm': [int(new_bpm[x]['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N']) for x in range(len(new_bpm))],
+        })
         
-        query_bpm_last_ds = pd.to_datetime(one_query(user_email, record_names[0])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
-        query_steps_last_ds = pd.to_datetime(one_query(user_email, record_names[1])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
-        query_calories_last_ds = pd.to_datetime(one_query(user_email, record_names[2])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
-        query_sleeps_last_ds = pd.to_datetime(one_query(user_email, record_names[3])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+        # request_time
         
-        if mongo_bpm_last_ds == query_bpm_last_ds:
-            print('bpm 업데이트 데이터 없음')
-            pass
-        else:
-            new_bpm = new_query(user_email, record_names[0], str(mongo_bpm_last_ds).replace(' ', 'T'))
-            new_bpm_df = pd.DataFrame({
-                'ds': [new_bpm[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_bpm))],
-                'bpm': [int(new_bpm[x]['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N']) for x in range(len(new_bpm))],
-            })
-            
-            # request_time
-            
-            bpm_collection.update_one(
-                {'user_email': user_email},
-                {
-                    '$set': {
-                        'date': request_time,
-                    },
-                    '$push': {
-                        'data': {
-                            '$each': new_bpm_df.to_dict('records')
-                        }
-                    }
+        bpm_collection.update_one(
+            {'user_email': user_email},
+            {
+                '$set': {
+                    'date': request_time,
                 },
-                upsert=True
-            )
-            
-        if mongo_steps_last_ds == query_steps_last_ds:
-            print('걸음수 업데이트 데이터 없음')
-            pass
-        else:
-            new_steps = new_query(user_email, record_names[1], str(mongo_steps_last_ds).replace(' ', 'T'))
-            new_steps_df = pd.DataFrame({
-                'ds': [new_steps[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_steps))],
-                'step': [int(new_steps[x]['recordInfo']['M']['count']['N']) for x in range(len(new_steps))],
-            })
-            
-            # request_time
-            
-            steps_collection.update_one(
-                {'user_email': user_email},
-                {
-                    '$set': {
-                        'date': request_time,
-                    },
-                    '$push': {
-                        'data': {
-                            '$each': new_steps_df.to_dict('records')
-                        }
+                '$push': {
+                    'data': {
+                        '$each': new_bpm_df.to_dict('records')
                     }
-                },
-                upsert=True
-            )
+                }
+            },
+            upsert=True
+        )
         
-        if mongo_calories_last_ds == query_calories_last_ds:
-            print('칼로리소모량 업데이트 데이터 없음')
-            pass
-        else:
-            new_calories = new_query(user_email, record_names[2], str(mongo_calories_last_ds).replace(' ', 'T'))
-            new_calories_df = pd.DataFrame({
-                'ds': [new_calories[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_calories))],
-                'calorie': [np.round(float(new_calories[x]['recordInfo']['M']['energy']['M']['value']['N']), 3) for x in range(len(new_calories))],
-            })
-            
-            calories_collection.update_one(
-                {'user_email': user_email},
-                {
-                    '$set': {
-                        'date': request_time,
-                    },
-                    '$push': {
-                        'data': {
-                            '$each': new_calories_df.to_dict('records')
-                        }
-                    }
-                },
-                upsert=True
-            )
+    if mongo_steps_last_ds == query_steps_last_ds:
+        print('걸음수 업데이트 데이터 없음')
+        # pass
+    else:
+        new_steps = new_query(user_email, record_names[1], str(mongo_steps_last_ds).replace(' ', 'T'))
+        new_steps_df = pd.DataFrame({
+            'ds': [new_steps[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_steps))],
+            'step': [int(new_steps[x]['recordInfo']['M']['count']['N']) for x in range(len(new_steps))],
+        })
         
-        if mongo_sleeps_last_ds == query_sleeps_last_ds:
-            print('수면 업데이트 데이터 없음')
-            pass
-        else:
-            new_sleeps = new_query(user_email, record_names[3], str(mongo_sleeps_last_ds).replace(' ', 'T'))
-            new_sleeps_df = pd.DataFrame({
-                'ds_start': [new_sleeps[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_sleeps)) for y in range(len(new_sleeps[x]['recordInfo']['M']['stages']['L']))],
-                'ds_end': [new_sleeps[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(new_sleeps)) for y in range(len(new_sleeps[x]['recordInfo']['M']['stages']['L']))],
-                'stage': [int(new_sleeps[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(new_sleeps)) for y in range(len(new_sleeps[x]['recordInfo']['M']['stages']['L']))],
-            })
-            
-            # request_time
-            
-            sleeps_collection.update_one(
-                {'user_email': user_email},
-                {
-                    '$set': {
-                        'date': request_time,
-                    },
-                    '$push': {
-                        'data': {
-                            '$each': new_sleeps_df.to_dict('records')
-                        }
-                    }
+        # request_time
+        
+        steps_collection.update_one(
+            {'user_email': user_email},
+            {
+                '$set': {
+                    'date': request_time,
                 },
-                upsert=True
-            )
+                '$push': {
+                    'data': {
+                        '$each': new_steps_df.to_dict('records')
+                    }
+                }
+            },
+            upsert=True
+        )
+    
+    if mongo_calories_last_ds == query_calories_last_ds:
+        print('칼로리소모량 업데이트 데이터 없음')
+        # pass
+    else:
+        new_calories = new_query(user_email, record_names[2], str(mongo_calories_last_ds).replace(' ', 'T'))
+        new_calories_df = pd.DataFrame({
+            'ds': [new_calories[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_calories))],
+            'calorie': [np.round(float(new_calories[x]['recordInfo']['M']['energy']['M']['value']['N']), 3) for x in range(len(new_calories))],
+        })
+        
+        calories_collection.update_one(
+            {'user_email': user_email},
+            {
+                '$set': {
+                    'date': request_time,
+                },
+                '$push': {
+                    'data': {
+                        '$each': new_calories_df.to_dict('records')
+                    }
+                }
+            },
+            upsert=True
+        )
+    
+    if mongo_sleeps_last_ds == query_sleeps_last_ds:
+        print('수면 업데이트 데이터 없음')
+        # pass
+    else:
+        new_sleeps = new_query(user_email, record_names[3], str(mongo_sleeps_last_ds).replace(' ', 'T'))
+        new_sleeps_df = pd.DataFrame({
+            'ds_start': [new_sleeps[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_sleeps)) for y in range(len(new_sleeps[x]['recordInfo']['M']['stages']['L']))],
+            'ds_end': [new_sleeps[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(new_sleeps)) for y in range(len(new_sleeps[x]['recordInfo']['M']['stages']['L']))],
+            'stage': [int(new_sleeps[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(new_sleeps)) for y in range(len(new_sleeps[x]['recordInfo']['M']['stages']['L']))],
+        })
+        
+        # request_time
+        
+        sleeps_collection.update_one(
+            {'user_email': user_email},
+            {
+                '$set': {
+                    'date': request_time,
+                },
+                '$push': {
+                    'data': {
+                        '$each': new_sleeps_df.to_dict('records')
+                    }
+                }
+            },
+            upsert=True
+        )
 
 
 
