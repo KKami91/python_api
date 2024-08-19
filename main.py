@@ -612,7 +612,7 @@ async def bpm_day_predict(user_email: str):
     # }
         
 
-def nk_group(group_):
+def calc_hrv(group_):
     rr_intervals = 60000/group_['bpm'].values
     
     peaks = nk.intervals_to_peaks(rr_intervals)
@@ -635,7 +635,11 @@ async def bpm_hour_feature(user_email: str):
     hour_group = hour_df.groupby(hour_df['ds'].dt.floor('h'))
     hour_hrv = hour_group.apply(calc_hrv).reset_index()
     
+    hour_hrv.rename(columns={'rmssd' : 'hour_rmssd', 'sdnn' : 'hour_sdnn'}, inplace=True)
+    
+    # columns이 다름.. 수정 필요
     return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
+#return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
     
     
 @app.get("/feature_day/{user_email}")
@@ -649,6 +653,9 @@ async def bpm_day_feature(user_email: str):
     day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=730)]
     day_group = day_df.groupby(day_df['ds'].dt.floor('d'))
     day_hrv = day_group.apply(calc_hrv).reset_index()
+    
+    day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
+    
     
     return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
     
@@ -801,14 +808,14 @@ def query_one_data(user_email: str):
         print(f"An error occurred: {e.response['Error']['Message']}")
         return None
 
-def calc_hrv(group):
-    rr_intervals = 60000 / group['bpm'].values
-    peaks = nk.intervals_to_peaks(rr_intervals)
-    hrv = nk.hrv_time(peaks)
-    return pd.Series({
-        'rmssd': hrv['HRV_RMSSD'].values[0],
-        'sdnn': hrv['HRV_SDNN'].values[0],
-    })
+# def calc_hrv(group):
+#     rr_intervals = 60000 / group['bpm'].values
+#     peaks = nk.intervals_to_peaks(rr_intervals)
+#     hrv = nk.hrv_time(peaks)
+#     return pd.Series({
+#         'rmssd': hrv['HRV_RMSSD'].values[0],
+#         'sdnn': hrv['HRV_SDNN'].values[0],
+#     })
 
 def create_bpm_dataframe_(bpm_data):
     if not bpm_data:
