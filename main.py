@@ -327,7 +327,7 @@ async def check_db_query(request: UserEmailRequest):
             {'user_email': user_email},
             {
                 '$set': {
-                    'date': request_time,
+                    'save_date': request_time,
                 },
                 '$push': {
                     'data': {
@@ -358,7 +358,7 @@ async def check_db_query(request: UserEmailRequest):
             {'user_email': user_email},
             {
                 '$set': {
-                    'date': request_time,
+                    'save_date': request_time,
                 },
                 '$push': {
                     'data': {
@@ -387,7 +387,7 @@ async def check_db_query(request: UserEmailRequest):
             {'user_email': user_email},
             {
                 '$set': {
-                    'date': request_time,
+                    'save_date': request_time,
                 },
                 '$push': {
                     'data': {
@@ -419,7 +419,7 @@ async def check_db_query(request: UserEmailRequest):
             {'user_email': user_email},
             {
                 '$set': {
-                    'date': request_time,
+                    'save_date': request_time,
                 },
                 '$push': {
                     'data': {
