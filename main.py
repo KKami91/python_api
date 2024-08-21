@@ -437,6 +437,7 @@ async def check_db_query(request: UserEmailRequest):
 @app.get("/predict_minute/{user_email}")
 async def bpm_minute_predict(user_email: str):
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
     
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
     mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')    
@@ -483,6 +484,7 @@ async def bpm_hour_predict(user_email: str):
     print('in predict_hour')
     starttime = time.time()
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
     
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
     mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')    
@@ -523,6 +525,7 @@ async def bpm_hour_predict(user_email: str):
 @app.get("/predict_day/{user_email}")
 async def bpm_day_predict(user_email: str):
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
     
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
     mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')    
@@ -627,6 +630,7 @@ def calc_hrv(group_):
 async def bpm_hour_feature(user_email: str):
     
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
     mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
     mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
@@ -646,6 +650,7 @@ async def bpm_hour_feature(user_email: str):
 async def bpm_day_feature(user_email: str):
     
     mongo_bpm_df = pd.DataFrame(bpm_collection.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
     mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
     mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
