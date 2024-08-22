@@ -617,7 +617,11 @@ async def bpm_day_predict(user_email: str):
 
 def calc_hrv(group_):
     rr_intervals = 60000/group_['bpm'].values
-    
+    if len(rr_intervals) == 1:
+        return pd.Series({
+            'rmssd': 0,
+            'sdnn': 0,
+        })
     peaks = nk.intervals_to_peaks(rr_intervals)
     hrv = nk.hrv_time(peaks)
     return pd.Series({
