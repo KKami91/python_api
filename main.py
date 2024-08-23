@@ -452,12 +452,12 @@ async def bpm_minute_predict(user_email: str):
     
     start_time = time.time()
     min_model = Prophet(
-        changepoint_prior_scale=0.01,
+        changepoint_prior_scale=0.0001,
         seasonality_mode='multiplicative',
-        daily_seasonality=True,
-        weekly_seasonality=True,
-        yearly_seasonality=True,
-        interval_width=0.95
+        #daily_seasonality=True,
+        #weekly_seasonality=True,
+        #yearly_seasonality=True,
+        #interval_width=0.95
     )
     min_model.add_seasonality(name='hourly', period=24, fourier_order=7)
     min_model.add_country_holidays(country_name='KOR')
