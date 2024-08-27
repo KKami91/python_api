@@ -232,21 +232,27 @@ async def check_db_query(request: UserEmailRequest):
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
     collection_names = ['bpm', 'steps', 'calories', 'sleeps']
-
+    
+    # 서버 dynamoDB 데이터 load 및 DataFrame 생성 (1)
+    dynamo_start_time = datetime.now()
     exist_times = exist_collection(user_email, collection_names)
     json_data = [new_query(user_email, record_names[x], exist_times[x]) for x in range(len(exist_times))]
-    print(len(json_data[0]))
-    print(len(json_data[1]))
-    print(len(json_data[2]))
-    print(len(json_data[3]))
     df_data = [create_df(json_data[x]) for x in range(len(json_data))]
+    dynamo_end_time = datetime.now()
+    print(f'DynamoDB Data 불러오기 및 DataFrame 생성 : {dynamo_end_time - dynamo_start_time}s')
     
+    # 서버 MongoDB 데이터 save (2)
+    mongo_start_time = datetime.now()    
     [update_db(user_email, df_data[x], collection_names[x], save_date) for x in range(len(df_data))]
+    mongo_end_time = datetime.now()
+    print(f'MongoDB 저장 : {mongo_end_time - mongo_start_time}s')
 
 
 
 @app.get("/predict_minute/{user_email}")
 async def bpm_minute_predict(user_email: str):
+    # 서버 BPM Prediction minute (4)
+    pred_min_start_time = time.time()
     mongo_bpm_df = pd.DataFrame(bpm.find_one({'user_email': user_email})['data'])
     mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
@@ -259,8 +265,6 @@ async def bpm_minute_predict(user_email: str):
     min_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=7)]
     
     
-    
-    start_time = time.time()
     min_model = Prophet(
         changepoint_prior_scale=0.0001,
         seasonality_mode='multiplicative',
@@ -282,8 +286,8 @@ async def bpm_minute_predict(user_email: str):
     
     min_forecast = min_forecast[len(min_forecast) - 60*24*1:]
     
-    end_time = time.time()
-    print(f'in predict minute 걸린 시간 : {end_time - start_time}')
+    pred_min_end_time = time.time()
+    print(f'BPM predict minute 걸린 시간 : {pred_min_end_time - pred_min_start_time}')
         
     return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
     
@@ -291,8 +295,8 @@ async def bpm_minute_predict(user_email: str):
     
 @app.get("/predict_hour/{user_email}")
 async def bpm_hour_predict(user_email: str):
-    print('in predict_hour')
-    starttime = time.time()
+    # 서버 BPM Prediction hour (5)
+    pred_hour_start_time = time.time()
     mongo_bpm_df = pd.DataFrame(bpm.find_one({'user_email': user_email})['data'])
     mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
@@ -323,8 +327,8 @@ async def bpm_hour_predict(user_email: str):
     hour_forecast.rename(columns={'yhat': 'hour_pred_bpm'}, inplace=True)
     hour_forecast['hour_pred_bpm'] = np.round(hour_forecast['hour_pred_bpm'], 3)
     
-    endtime = time.time()
-    print(f'in predict hour 걸린 시간 : {endtime - starttime}')
+    pred_hour_end_time = time.time()
+    print(f'BPM predict hour 걸린 시간 : {pred_hour_end_time - pred_hour_start_time}')
     
     
         
@@ -440,7 +444,8 @@ def calc_hrv(group_):
    
 @app.get("/feature_hour/{user_email}")
 async def bpm_hour_feature(user_email: str):
-    start = time.time()
+    # 서버 HRV 계산 hour (6)
+    hrv_hour_start_time = time.time()
     mongo_bpm_df = pd.DataFrame(bpm.find_one({'user_email': user_email})['data'])
     mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
     mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
@@ -452,8 +457,8 @@ async def bpm_hour_feature(user_email: str):
     hour_hrv = hour_group.apply(calc_hrv).reset_index()
     
     hour_hrv.rename(columns={'rmssd' : 'hour_rmssd', 'sdnn' : 'hour_sdnn'}, inplace=True)
-    end = time.time()
-    print(f'feature_hour 걸린 시간 : {end - start}')
+    hrv_hour_end_time = time.time()
+    print(f'HRV 계산 hour 걸린 시간 : {hrv_hour_end_time - hrv_hour_start_time}')
 
     return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
     
