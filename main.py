@@ -63,10 +63,249 @@ hourly_collection = db.hourly
 
 
 # raw data 저장 collection 및 query 240812
+# daily hrv 저장 collection
 bpm = db.bpm
 steps = db.steps
 calories = db.calories
 sleeps = db.sleeps
+hrv_collection = db.hrv
+
+
+################ 데이터 각각 나눈 버전 ###############
+bpm_div = db.bpm_div
+step_div = db.step_div
+calorie_div = db.calorie_div
+sleep_div = db.sleep_div
+
+
+@app.post("/check_db3_div")
+async def check_db_query_div(request: UserEmailRequest):
+    user_email = request.user_email
+    record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
+    collection_names_div = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
+    
+    dynamo_start_time = datetime.now()
+    exist_times = exist_collection_div(user_email, collection_names_div)
+    # print(f'exist_times ---> {exist_times}')
+    json_data = [new_query_div(user_email, record_names[x], exist_times[x]) for x in range(len(exist_times))]
+    # print(f'json_data ---> {json_data}')
+    df_data = [create_df_div(json_data[x]) for x in range(len(json_data))]
+    dynamo_end_time = datetime.now()
+    print(f'DynamoDB Data 불러오기 및 DataFrame 생성 : {dynamo_end_time - dynamo_start_time}s')
+    
+    mongo_start_time = datetime.now()
+    [update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))]
+    mongo_end_time = datetime.now()
+    print(f'MongoDB 저장 : {mongo_end_time - mongo_start_time}')
+    
+    
+def exist_collection_div(user_email, collections):
+    res_idx = []
+    for idx in collections:
+        if eval(idx).find_one({'user_email': user_email}) == None:
+            res_idx.append('0000-00-00T00:00:00')
+        else:
+            if idx == 'sleep_div':
+                res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp_end']))
+            else:
+                res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp']))
+    return res_idx
+
+
+def new_query_div(user_email, record_name, start_time):
+    new_items = []
+    start_time = start_time
+    last_evaluated_key = None
+    
+    if record_name == 'Steps':
+        start_time = start_time.replace(' ', 'T')
+    else:
+        if str(start_time)[:4] == '0000':
+            start_time = start_time
+        else:
+            if record_name == 'HeartRate' or record_name == 'TotalCaloriesBurned':
+                start_time = str(pd.to_datetime(start_time) - timedelta(hours=9) + timedelta(minutes=1)).replace(' ', 'T')
+            else:
+                start_time = str(pd.to_datetime(start_time) - timedelta(hours=9)).replace(' ', 'T')
+    try:
+        while True:
+            query_params = {
+                'TableName': TABLE_NAME,
+                'KeyConditionExpression': 'PK = :pk AND SK BETWEEN :start_sk AND :end_sk',
+                'ExpressionAttributeValues': {
+                    ':pk': {'S': f'U#{user_email}'},
+                    ':start_sk': {'S': f'{record_name}Record#{start_time}'},
+                    ':end_sk': {'S': f'{record_name}Record#9999-12-31T23:59:59Z'},
+                },
+            }
+            
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+                
+            response = dynamodb.query(**query_params)
+            new_items.extend(response['Items'])
+            last_evaluated_key = response.get('LastEvaluatedKey')
+            if not last_evaluated_key:
+                break
+    
+        return new_items
+
+    except ClientError as e:
+        print({e.response['Error']['Message']})
+        return None
+
+def create_df_div(query_json):
+    if len(query_json) == 0:
+        return []
+    
+    if 'HeartRate' in query_json[0]['SK']['S']:
+        return pd.DataFrame({
+            'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+            'bpm': [int(query_json[x]['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N']) for x in range(len(query_json))]
+        })
+        
+    if 'Steps' in query_json[0]['SK']['S']:
+        return pd.DataFrame({
+            'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+            'step': [int(query_json[x]['recordInfo']['M']['count']['N']) for x in range(len(query_json))],
+        })
+        
+    if 'TotalCaloriesBurned' in query_json[0]['SK']['S']:
+        return pd.DataFrame({
+            'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+            'calorie': [np.round(float(query_json[x]['recordInfo']['M']['energy']['M']['value']['N']), 3) for x in range(len(query_json))],
+        })
+    
+    if 'SleepSession' in query_json[0]['SK']['S']:
+        return pd.DataFrame({
+            'ds_start': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+            'ds_end': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+            'sleep': [int(query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))],
+        })
+    
+def prepare_docs(user_email, df, data_type):
+    #print(f'hyobin: {data_type}')
+    # print(f'hyobin: {df[:5]}')
+    # print('in prepare_docs --> ', df)
+    # print('data_type', data_type)
+    # print("data_type[:data_type.find('_')]", data_type[:data_type.find('_')])
+    if data_type[:data_type.find('_')] == 'calorie':
+        return [
+            {
+                'user_email': user_email,
+                'type': data_type[:data_type.find('_')],
+                'value': float(row[data_type[:data_type.find('_')]]),
+                'timestamp': row['ds'],
+            }
+            for row in df.to_dict('records')
+        ]
+        
+    elif data_type[:data_type.find('_')] == 'sleep':
+        return [
+            {
+                'user_email': user_email,
+                'type': data_type[:data_type.find('_')],
+                'value': int(row[data_type[:data_type.find('_')]]),
+                'timestamp_start': row['ds_start'],
+                'timestamp_end': row['ds_end'],
+            }
+            for row in df.to_dict('records')
+        ]
+        
+    else: 
+        return [
+            {
+                'user_email': user_email,
+                'type': data_type[:data_type.find('_')],
+                'value': int(row[data_type[:data_type.find('_')]]),
+                'timestamp': row['ds']
+            }
+            for row in df.to_dict('records')
+        ]
+
+    
+
+def update_db_div(user_email, df, collection):
+    if len(df) == 0:
+        return 0
+    # prepare_docs() 구조 bpm, step, calorie, step 들어가야
+    start_doc = time.time()
+    documents = prepare_docs(user_email, df, collection)
+    end_doc = time.time()
+    # print(documents)
+    print(f'{user_email} - {collection} prepare_docs 걸린 시간 : {end_doc - start_doc}')
+    
+    
+    if collection[:collection.find('_')] == 'sleep':
+        bulk_operations = [
+            UpdateOne(
+                {
+                    'user_email': doc['user_email'],
+                    'timestamp_start': doc['timestamp_start'],
+                },
+                {'$set':doc},
+                upsert=True
+            ) for doc in documents
+        ]
+        
+    else:
+        bulk_operations = [
+            UpdateOne(
+                {
+                    'user_email': doc['user_email'],
+                    'timestamp': doc['timestamp']
+                },
+                {'$set':doc},
+                upsert=True
+            ) for doc in documents
+        ]
+        
+    batch_size = 5000
+    total_operations = len(bulk_operations)
+    
+    start_time = time.time()
+    
+    for i in range(0, total_operations, batch_size):
+        batch = bulk_operations[i:i+batch_size]
+        eval(collection).bulk_write(batch, ordered=False)
+        
+    end_time = time.time()
+    print(f'{collection} 저장 시간 --> {end_time - start_time}')
+
+
+
+@app.get("/get_save_dates_div/{user_email}")
+async def get_save_dates_div(user_email: str):
+    collections = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
+    # print('----234')
+    # print('----234')
+    # # print(list(str(max(exist_collection_div(user_email, collections)))))
+    # print('----234')
+    # print('----234')
+    return {"save_dates": [max(exist_collection_div(user_email, collections))]}
+
+
+@app.get("/get_save_dates2/{user_email}")
+async def get_save_dates(user_email: str):
+    collections = [bpm, steps, calories, sleeps]
+    all_save_dates = set()
+
+    for collection in collections:
+        document = collection.find_one({'user_email': user_email})
+        if document and 'save_date' in document:
+            all_save_dates.add(document['save_date'])
+    # print('----234')
+    # # ['2024-08-27 10:28:37']
+    # print(sorted(list(all_save_dates), reverse=True))
+    # print('----234')
+    # print('----234')
+
+    return {"save_dates": sorted(list(all_save_dates), reverse=True)}
+
+
+#########################################################
+
+
 
 def all_query(user_email: str, record_name: str):
     items = []
@@ -166,6 +405,56 @@ def one_query(user_email: str, record_name: str):
     except ClientError as e:
         print(f"An error occurred: {e.response['Error']['Message']}")
         return None
+        
+@app.post("/check_db2")
+async def check_db(request: UserEmailRequest):
+    user_email = request.user_email
+    
+    input_date = datetime.now() + timedelta(hours=9)
+    
+    
+    if hourly_collection.find_one({'user_email': user_email}) == None: 
+        
+        bpm_data = query_bpm_data(user_email)
+        step_data = query_step_data(user_email)
+        calorie_data = query_calorie_data(user_email)
+        
+           
+        bpm_hour, bpm_day, last_ds = create_bpm_dataframe_(bpm_data)
+        step_hour, step_day = create_step_dataframe_(step_data)
+        calorie_hour, calorie_day = create_calorie_dataframe_(calorie_data)
+        
+        hour_df = pd.concat([bpm_hour, step_hour, calorie_hour], axis=0).sort_values('ds').reset_index(drop=True).groupby('ds', as_index=False).first()
+        day_df = pd.concat([bpm_day, step_day, calorie_day], axis=0).sort_values('ds').reset_index(drop=True).groupby('ds', as_index=False).first()
+        
+        hour_df = hour_df.replace({np.nan: None})
+        day_df = day_df.replace({np.nan: None})
+        
+        hourly_collection.insert_one({
+            'user_email': user_email,
+            'date': str(input_date.year) + '-' + str(input_date.month).zfill(2) + '-' + str(input_date.day).zfill(2) + ' ' + str(input_date.hour).zfill(2) + ':' + str(input_date.minute).zfill(2) + ':' + str(input_date.second).zfill(2),
+            'data': hour_df.to_dict('records'),
+        })
+        
+        daily_collection.insert_one({
+            'user_email': user_email,
+            'date': str(input_date.year) + '-' + str(input_date.month).zfill(2) + '-' + str(input_date.day).zfill(2) + ' ' + str(input_date.hour).zfill(2) + ':' + str(input_date.minute).zfill(2) + ':' + str(input_date.second).zfill(2),
+            'data': day_df.to_dict('records'),
+        })
+        
+        return {'message': '데이터 저장 완료'}
+    
+    
+    # collection 최신 데이터 반환
+    query_data = list(db.hourly.aggregate([
+        {'$match': {'user_email': user_email}},
+        {'$sort': {'date': -1}},
+        {'$limit': 1},
+        {'$project': {
+            'latest_date': '$date',
+            'last_data_point': {'$arrayElemAt': ['$data', -1]}
+        }}
+    ]))
     
 def update_db(user_email, df, collection, save_date):
     if len(df) == 0:
@@ -224,7 +513,75 @@ def create_df(query_json):
                     'ds_end': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
                     'stage': [int(query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))],
                 })
-        
+    
+def calc_hrv(group_):
+    rr_intervals = 60000/group_['bpm'].values
+    if len(rr_intervals) == 1:
+        return pd.Series({
+            'rmssd': 0,
+            'sdnn': 0,
+        })
+    peaks = nk.intervals_to_peaks(rr_intervals)
+    hrv = nk.hrv_time(peaks)
+    return pd.Series({
+        'rmssd': np.round(hrv['HRV_RMSSD'].values[0], 3),
+        'sdnn': np.round(hrv['HRV_SDNN'].values[0], 3),
+    })
+    
+   
+@app.get("/feature_hour/{user_email}")
+async def bpm_hour_feature(user_email: str):
+    # 서버 HRV 계산 hour (6)
+    hrv_hour_start_time = time.time()
+    mongo_bpm_df = pd.DataFrame(bpm.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
+    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
+
+    hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=180)]
+    hour_group = hour_df.groupby(hour_df['ds'].dt.floor('h'))
+    hour_hrv = hour_group.apply(calc_hrv).reset_index()
+    
+    hour_hrv.rename(columns={'rmssd' : 'hour_rmssd', 'sdnn' : 'hour_sdnn'}, inplace=True)
+    hrv_hour_end_time = time.time()
+    print(f'HRV 계산 hour 걸린 시간 : {hrv_hour_end_time - hrv_hour_start_time}')
+
+    return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
+    
+    
+@app.get("/feature_day/{user_email}")
+async def bpm_day_feature(user_email: str):
+    
+    mongo_bpm_df = pd.DataFrame(bpm.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
+    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
+
+    day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=730)]
+    day_group = day_df.groupby(day_df['ds'].dt.floor('d'))
+    day_hrv = day_group.apply(calc_hrv).reset_index()
+    
+    day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
+    print(day_hrv)
+    print('------------------------------------------')
+    
+    return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
+
+  
+@app.get("/get_save_dates/{user_email}")
+async def get_save_dates(user_email: str):
+    collections = [bpm, steps, calories, sleeps]
+    all_save_dates = set()
+
+    for collection in collections:
+        document = collection.find_one({'user_email': user_email})
+        if document and 'save_date' in document:
+            all_save_dates.add(document['save_date'])
+
+    return {"save_dates": sorted(list(all_save_dates), reverse=True)}
+
 
 @app.post("/check_db3")
 async def check_db_query(request: UserEmailRequest):
@@ -232,12 +589,15 @@ async def check_db_query(request: UserEmailRequest):
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
     collection_names = ['bpm', 'steps', 'calories', 'sleeps']
-    
+
     # 서버 dynamoDB 데이터 load 및 DataFrame 생성 (1)
     dynamo_start_time = datetime.now()
     exist_times = exist_collection(user_email, collection_names)
     json_data = [new_query(user_email, record_names[x], exist_times[x]) for x in range(len(exist_times))]
     df_data = [create_df(json_data[x]) for x in range(len(json_data))]
+    
+    # df_data[0] : bpm dataframe
+    
     dynamo_end_time = datetime.now()
     print(f'DynamoDB Data 불러오기 및 DataFrame 생성 : {dynamo_end_time - dynamo_start_time}s')
     
@@ -246,8 +606,9 @@ async def check_db_query(request: UserEmailRequest):
     [update_db(user_email, df_data[x], collection_names[x], save_date) for x in range(len(df_data))]
     mongo_end_time = datetime.now()
     print(f'MongoDB 저장 : {mongo_end_time - mongo_start_time}s')
-
-
+    
+    
+    
 
 @app.get("/predict_minute/{user_email}")
 async def bpm_minute_predict(user_email: str):
@@ -265,6 +626,8 @@ async def bpm_minute_predict(user_email: str):
     min_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=7)]
     
     
+    
+    start_time = time.time()
     min_model = Prophet(
         changepoint_prior_scale=0.0001,
         seasonality_mode='multiplicative',
@@ -368,6 +731,281 @@ async def bpm_day_predict(user_email: str):
     day_forecast['day_pred_bpm'] = np.round(day_forecast['day_pred_bpm'], 3)
         
     return {'day_pred_bpm': day_forecast[['ds', 'day_pred_bpm']][len(day_forecast) - 30:].to_dict('records')}
+    
+    
+    # ############## 유저 데이터 X -> 전체 데이터 쿼리 ##############
+    # if bpm_collection.find_one({'user_email': user_email}) == None or steps_collection.find_one({'user_email': user_email}) == None or calories_collection.find_one({'user_email': user_email}) == None or sleeps_collection.find_one({'user_email': user_email}) == None:
+    #     start_time = time.time()
+    #     if bpm_collection.find_one({'user_email': user_email}) == None:
+    #         bpm_query = all_query(user_email, record_names[0])
+            
+    #         all_bpm_df = pd.DataFrame({
+    #             'ds': [bpm_query[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(bpm_query))],
+    #             'bpm': [int(bpm_query[x]['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N']) for x in range(len(bpm_query))],
+    #         })
+            
+    #         all_bpm_df['ds'] = pd.to_datetime(all_bpm_df['ds'])
+            
+    #         bpm_collection.insert_one({
+    #             'user_email': user_email,
+    #             'save_date': request_time,
+    #             'last_date': list(all_bpm_df['ds'])[-1],
+    #             'data': all_bpm_df.to_dict('records'),
+    #         })
+            
+            
+            
+            
+    #     if steps_collection.find_one({'user_email': user_email}) == None:
+    #         step_query = all_query(user_email, record_names[1])
+            
+    #         all_step_df = pd.DataFrame({
+    #             'ds': [step_query[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(step_query))],
+    #             'step': [int(step_query[x]['recordInfo']['M']['count']['N']) for x in range(len(step_query))],
+    #         })
+            
+    #         all_step_df['ds'] = pd.to_datetime(all_step_df['ds'])
+            
+    #         steps_collection.insert_one({
+    #             'user_email': user_email,
+    #             'save_date': request_time,
+    #             'last_date': list(all_step_df['ds'])[-1],
+    #             'data': all_step_df.to_dict('records'),
+    #         })
+            
+            
+            
+            
+            
+    #     if calories_collection.find_one({'user_email': user_email}) == None:
+    #         calorie_query = all_query(user_email, record_names[2])
+            
+    #         all_calorie_df = pd.DataFrame({
+    #             'ds': [calorie_query[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(calorie_query))],
+    #             'calorie': [np.round(float(calorie_query[x]['recordInfo']['M']['energy']['M']['value']['N']), 3) for x in range(len(calorie_query))],
+    #         })
+            
+    #         all_calorie_df['ds'] = pd.to_datetime(all_calorie_df['ds'])
+            
+    #         calories_collection.insert_one({
+    #             'user_email': user_email,
+    #             'save_date': request_time,
+    #             'last_date': list(all_calorie_df['ds'])[-1],
+    #             'data': all_calorie_df.to_dict('records'),
+    #         })
+            
+            
+            
+            
+    #     if sleeps_collection.find_one({'user_email': user_email}) == None:
+    #         sleeps_query = all_query(user_email, record_names[3])
+            
+    #         all_sleep_df = pd.DataFrame({
+    #             'ds_start': [sleeps_query[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(sleeps_query)) for y in range(len(sleeps_query[x]['recordInfo']['M']['stages']['L']))],
+    #             'ds_end': [sleeps_query[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(sleeps_query)) for y in range(len(sleeps_query[x]['recordInfo']['M']['stages']['L']))],
+    #             'stage': [int(sleeps_query[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(sleeps_query)) for y in range(len(sleeps_query[x]['recordInfo']['M']['stages']['L']))],
+    #         })
+            
+    #         all_sleep_df['ds_start'] = pd.to_datetime(all_sleep_df['ds_start'])
+    #         all_sleep_df['ds_end'] = pd.to_datetime(all_sleep_df['ds_end'])
+            
+    #         sleeps_collection.insert_one({
+    #             'user_email': user_email,
+    #             'save_date': request_time,
+    #             'last_date': pd.to_datetime(sleeps_query[-1]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19]),
+    #             'data': all_sleep_df.to_dict('records'),
+    #         })
+            
+            
+            
+    #     bpm_collection.update_one(
+    #         {'user_email': user_email},
+    #         {
+    #             '$set': {
+    #                 'save_date': request_time,
+    #             },
+    #         },
+    #         upsert=True
+    #     )
+        
+    #     steps_collection.update_one(
+    #         {'user_email': user_email},
+    #         {
+    #             '$set': {
+    #                 'save_date': request_time,
+    #             },
+    #         },
+    #         upsert=True
+    #     )
+
+    #     calories_collection.update_one(
+    #         {'user_email': user_email},
+    #         {
+    #             '$set': {
+    #                 'save_date': request_time,
+    #             },
+    #         },
+    #         upsert=True
+    #     )
+
+    #     sleeps_collection.update_one(
+    #         {'user_email': user_email},
+    #         {
+    #             '$set': {
+    #                 'save_date': request_time,
+    #             },
+    #         },
+    #         upsert=True
+    #     )
+    #     end_time = time.time()
+    #     print(f'데이터 저장 및 save 시간 업데이트 걸린 시간 : {(end_time - start_time):.4f}')
+        
+    
+    # # else:
+    # start_time = time.time()
+    # mongo_bpm_last_ds = pd.to_datetime(bpm_collection.find_one({'user_email': user_email})['last_date'])
+    # mongo_steps_last_ds = pd.to_datetime(steps_collection.find_one({'user_email': user_email})['last_date'])
+    # mongo_calories_last_ds = pd.to_datetime(calories_collection.find_one({'user_email': user_email})['last_date'])
+    # mongo_sleeps_last_ds = pd.to_datetime(sleeps_collection.find_one({'user_email': user_email})['last_date'])
+    # end_time = time.time()
+    # print(f'몽고디비 마지막 last date 가져오는 시간 (4개) : {(end_time - start_time):.4f}')
+    
+    # start_time = time.time()
+    # query_bpm_last_ds = pd.to_datetime(one_query(user_email, record_names[0])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    # query_steps_last_ds = pd.to_datetime(one_query(user_email, record_names[1])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    # query_calories_last_ds = pd.to_datetime(one_query(user_email, record_names[2])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    # query_sleeps_last_ds = pd.to_datetime(one_query(user_email, record_names[3])['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19])
+    # end_time = time.time()
+    # print(f'마지막 쿼리 하나 가져오는데 걸리는 시간 (4개) : {(end_time - start_time):.4f}')
+    
+    # print(f'Mongo Last ds : {mongo_bpm_last_ds} <----> Query Last ds : {query_bpm_last_ds}')
+    # print(f'Mongo Last ds : {mongo_steps_last_ds} <----> Query Last ds : {query_steps_last_ds}')
+    # print(f'Mongo Last ds : {mongo_calories_last_ds} <----> Query Last ds : {query_calories_last_ds}')
+    # print(f'Mongo Last ds : {mongo_sleeps_last_ds} <----> Query Last ds : {query_sleeps_last_ds}')
+    # start_time = time.time()
+    # if mongo_bpm_last_ds == query_bpm_last_ds:
+    #     print('bpm 업데이트 데이터 없음')
+    #     # pass
+    # else:
+    #     new_bpm = new_query(user_email, record_names[0], str(mongo_bpm_last_ds).replace(' ', 'T'))
+    #     new_bpm_df = pd.DataFrame({
+    #         'ds': [new_bpm[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_bpm))],
+    #         'bpm': [int(new_bpm[x]['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N']) for x in range(len(new_bpm))],
+    #     })
+        
+    #     # request_time
+        
+    #     bpm_collection.update_one(
+    #         {'user_email': user_email},
+    #         {
+    #             '$set': {
+    #                 'save_date': request_time,
+    #             },
+    #             '$push': {
+    #                 'data': {
+    #                     '$each': new_bpm_df.to_dict('records')
+    #                 }
+    #             }
+    #         },
+    #         upsert=True
+    #     )
+    # end_time = time.time()
+    # print(f'BPM 데이터 업데이트 체크 걸린 시간 : {(end_time - start_time):.4f}')
+        
+        
+    # start_time = time.time()
+    # if mongo_steps_last_ds == query_steps_last_ds:
+    #     print('걸음수 업데이트 데이터 없음')
+    #     # pass
+    # else:
+    #     new_steps = new_query(user_email, record_names[1], str(mongo_steps_last_ds).replace(' ', 'T'))
+    #     new_steps_df = pd.DataFrame({
+    #         'ds': [new_steps[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_steps))],
+    #         'step': [int(new_steps[x]['recordInfo']['M']['count']['N']) for x in range(len(new_steps))],
+    #     })
+        
+    #     # request_time
+        
+    #     steps_collection.update_one(
+    #         {'user_email': user_email},
+    #         {
+    #             '$set': {
+    #                 'save_date': request_time,
+    #             },
+    #             '$push': {
+    #                 'data': {
+    #                     '$each': new_steps_df.to_dict('records')
+    #                 }
+    #             }
+    #         },
+    #         upsert=True
+    #     )
+        
+    # end_time = time.time()
+    # print(f'step 데이터 업데이트 체크 걸린 시간 : {(end_time - start_time):.4f}')
+    
+    # start_time = time.time()
+    # if mongo_calories_last_ds == query_calories_last_ds:
+    #     print('칼로리소모량 업데이트 데이터 없음')
+    #     # pass
+    # else:
+    #     new_calories = new_query(user_email, record_names[2], str(mongo_calories_last_ds).replace(' ', 'T'))
+    #     new_calories_df = pd.DataFrame({
+    #         'ds': [new_calories[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_calories))],
+    #         'calorie': [np.round(float(new_calories[x]['recordInfo']['M']['energy']['M']['value']['N']), 3) for x in range(len(new_calories))],
+    #     })
+        
+    #     calories_collection.update_one(
+    #         {'user_email': user_email},
+    #         {
+    #             '$set': {
+    #                 'save_date': request_time,
+    #             },
+    #             '$push': {
+    #                 'data': {
+    #                     '$each': new_calories_df.to_dict('records')
+    #                 }
+    #             }
+    #         },
+    #         upsert=True
+    #     )    
+    # end_time = time.time()
+    # print(f'칼로리 데이터 업데이트 체크 걸린 시간 : {(end_time - start_time):.4f}')
+    
+    
+    # start_time = time.time()
+    # if mongo_sleeps_last_ds == query_sleeps_last_ds:
+    #     print('수면 업데이트 데이터 없음')
+    #     # pass
+    # else:
+    #     new_sleeps = new_query(user_email, record_names[3], str(mongo_sleeps_last_ds).replace(' ', 'T'))
+    #     new_sleeps_df = pd.DataFrame({
+    #         'ds_start': [new_sleeps[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(new_sleeps)) for y in range(len(new_sleeps[x]['recordInfo']['M']['stages']['L']))],
+    #         'ds_end': [new_sleeps[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(new_sleeps)) for y in range(len(new_sleeps[x]['recordInfo']['M']['stages']['L']))],
+    #         'stage': [int(new_sleeps[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(new_sleeps)) for y in range(len(new_sleeps[x]['recordInfo']['M']['stages']['L']))],
+    #     })
+        
+    #     # request_time
+        
+    #     sleeps_collection.update_one(
+    #         {'user_email': user_email},
+    #         {
+    #             '$set': {
+    #                 'save_date': request_time,
+    #             },
+    #             '$push': {
+    #                 'data': {
+    #                     '$each': new_sleeps_df.to_dict('records')
+    #                 }
+    #             }
+    #         },
+    #         upsert=True
+    #     )
+    # end_time = time.time()
+    # print(f'수면 데이터 업데이트 체크 걸린 시간 : {(end_time - start_time):.4f}')
+
+
+
         
         
     # # elif types == 'hour':
@@ -427,79 +1065,7 @@ async def bpm_day_predict(user_email: str):
     # }
         
 
-def calc_hrv(group_):
-    rr_intervals = 60000/group_['bpm'].values
-    if len(rr_intervals) == 1:
-        return pd.Series({
-            'rmssd': 0,
-            'sdnn': 0,
-        })
-    peaks = nk.intervals_to_peaks(rr_intervals)
-    hrv = nk.hrv_time(peaks)
-    return pd.Series({
-        'rmssd': np.round(hrv['HRV_RMSSD'].values[0], 3),
-        'sdnn': np.round(hrv['HRV_SDNN'].values[0], 3),
-    })
-    
-   
-@app.get("/feature_hour/{user_email}")
-async def bpm_hour_feature(user_email: str):
-    # 서버 HRV 계산 hour (6)
-    hrv_hour_start_time = time.time()
-    mongo_bpm_df = pd.DataFrame(bpm.find_one({'user_email': user_email})['data'])
-    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
-    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
-    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
-    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
 
-    hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=180)]
-    hour_group = hour_df.groupby(hour_df['ds'].dt.floor('h'))
-    hour_hrv = hour_group.apply(calc_hrv).reset_index()
-    
-    hour_hrv.rename(columns={'rmssd' : 'hour_rmssd', 'sdnn' : 'hour_sdnn'}, inplace=True)
-    hrv_hour_end_time = time.time()
-    print(f'HRV 계산 hour 걸린 시간 : {hrv_hour_end_time - hrv_hour_start_time}')
-
-    return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
-    
-    
-@app.get("/feature_day/{user_email}")
-async def bpm_day_feature(user_email: str):
-    
-    mongo_bpm_df = pd.DataFrame(bpm.find_one({'user_email': user_email})['data'])
-    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
-    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
-    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
-    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
-
-    day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=730)]
-    day_group = day_df.groupby(day_df['ds'].dt.floor('d'))
-    day_hrv = day_group.apply(calc_hrv).reset_index()
-    
-    day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
-    
-    
-    return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
-    
-    # return {
-    #     #'min_hrv': None,
-    #     'hour_hrv': hour_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records'),
-    #     'day_hrv': day_hrv[['ds', 'rmssd', 'sdnn']].to_dict('records'),
-    # }
-    
-    
-    
-@app.get("/get_save_dates/{user_email}")
-async def get_save_dates(user_email: str):
-    collections = [bpm, steps, calories, sleeps]
-    all_save_dates = set()
-
-    for collection in collections:
-        document = collection.find_one({'user_email': user_email})
-        if document and 'save_date' in document:
-            all_save_dates.add(document['save_date'])
-
-    return {"save_dates": sorted(list(all_save_dates), reverse=True)}
 
 
 def query_bpm_data(user_email: str):
@@ -1642,7 +2208,7 @@ async def check_db(request: UserEmailRequest):
         }}
     ]))
     
-    print('query_data', query_data)
+    
     
     # dict_compare = {'bpm': 'HeartRateRecord', 'rmssd': 'HeartRateRecord', 'sdnn': 'HeartRateRecord', 'step': 'StepsRecord', 'calorie': 'TotalCaloriesBurnedRecord'}
     
@@ -1720,9 +2286,9 @@ async def check_db(request: UserEmailRequest):
 @app.post("/check_db1")
 async def check_db(request: UserEmailRequest):
     user_email = request.user_email
-    print(user_email)
+    
     input_date = datetime.now() + timedelta(hours=9)
-    print(input_date)
+    
     # analysis, predict collection 동시에 처리하기에 하나로만 처리? 
     if prediction_collection.find_one({"user_email": user_email}) == None:
 
