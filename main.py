@@ -12,7 +12,7 @@ from dateutil import relativedelta
 from datetime import timedelta
 from typing import Optional
 from dotenv import load_dotenv
-from pymongo import MongoClient
+from pymongo import MongoClient, DESCENDING
 from urllib.parse import unquote
 import numpy as np
 import math
