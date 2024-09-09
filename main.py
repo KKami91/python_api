@@ -284,6 +284,118 @@ async def get_save_dates_div(user_email: str):
     # print('----234')
     return {"save_dates": [max(exist_collection_div(user_email, collections))]}
 
+@app.get("/feature_hour_div/{user_email}")
+async def bpm_hour_feature(user_email: str):
+    query = bpm_div.find({'user_email': user_email})
+    list_query = list(query)
+    mongo_bpm_df = pd.DataFrame({
+        'ds': [list_query[x]['timestamp'] for x in range(len(list_query))],
+        'bpm': [list_query[x]['value'] for x in range(len(list_query))]
+    })
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
+    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
+
+    hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=180)]
+    hour_group = hour_df.groupby(hour_df['ds'].dt.floor('h'))
+    hour_hrv = hour_group.apply(calc_hrv).reset_index()
+    
+    hour_hrv.rename(columns={'rmssd' : 'hour_rmssd', 'sdnn' : 'hour_sdnn'}, inplace=True)
+    
+    return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
+     
+@app.get("/feature_day_div/{user_email}")
+async def bpm_day_feature(user_email: str):
+    query = bpm_div.find({'user_email': user_email})
+    list_query = list(query)
+    mongo_bpm_df = pd.DataFrame({
+        'ds': [list_query[x]['timestamp'] for x in range(len(list_query))],
+        'bpm': [list_query[x]['value'] for x in range(len(list_query))]
+    })
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
+    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
+
+    day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=730)]
+    day_group = day_df.groupby(day_df['ds'].dt.floor('d'))
+    day_hrv = day_group.apply(calc_hrv).reset_index()
+    
+    day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
+
+    return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
+
+@app.get("/predict_minute_div/{user_email}")
+async def bpm_minute_predict(user_email: str):
+    query = bpm_div.find({'user_email': user_email})
+    list_query = list(query)
+    mongo_bpm_df = pd.DataFrame({
+        'ds': [list_query[x]['timestamp'] for x in range(len(list_query))],
+        'bpm': [list_query[x]['value'] for x in range(len(list_query))]
+    })
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')    
+    mongo_bpm_df.rename(columns={'bpm': 'y'}, inplace=True)
+    mongo_bpm_df = mongo_bpm_df.astype({'y': 'int32'})
+
+    min_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=7)]
+
+    min_model = Prophet(
+        changepoint_prior_scale=0.0001,
+        seasonality_mode='multiplicative',
+    )
+    min_model.add_seasonality(name='hourly', period=24, fourier_order=7)
+    min_model.add_country_holidays(country_name='KOR')
+    min_model.fit(min_df)
+    
+    min_future = min_model.make_future_dataframe(periods=60*24*1, freq='min')
+    min_forecast = min_model.predict(min_future)
+
+    min_forecast.rename(columns={'yhat': 'min_pred_bpm'}, inplace=True)
+    min_forecast['min_pred_bpm'] = np.round(min_forecast['min_pred_bpm'], 3)  
+    min_forecast = min_forecast[len(min_forecast) - 60*24*1:]
+
+    return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
+       
+@app.get("/predict_hour_div/{user_email}")
+async def bpm_hour_predict(user_email: str):
+    query = bpm_div.find({'user_email': user_email})
+    list_query = list(query)
+    mongo_bpm_df = pd.DataFrame({
+        'ds': [list_query[x]['timestamp'] for x in range(len(list_query))],
+        'bpm': [list_query[x]['value'] for x in range(len(list_query))]
+    })
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')    
+    mongo_bpm_df.rename(columns={'bpm': 'y'}, inplace=True)
+    mongo_bpm_df = mongo_bpm_df.astype({'y': 'int32'})
+
+    hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=180)]
+    hour_df = hour_df.groupby(hour_df['ds'].dt.floor('h')).agg({'y':'mean'}).reset_index()
+    
+    hour_model = Prophet(
+        changepoint_prior_scale=0.01,
+        seasonality_mode='multiplicative',
+        daily_seasonality=True,
+        weekly_seasonality=True,
+        yearly_seasonality=True,
+        interval_width=0.95
+    )
+    hour_model.add_seasonality(name='hourly', period=24, fourier_order=7)
+    hour_model.add_country_holidays(country_name='KOR')
+    hour_model.fit(hour_df)
+    
+    hour_future = hour_model.make_future_dataframe(periods=72, freq='h')
+    hour_forecast = hour_model.predict(hour_future)
+    
+    hour_forecast.rename(columns={'yhat': 'hour_pred_bpm'}, inplace=True)
+    hour_forecast['hour_pred_bpm'] = np.round(hour_forecast['hour_pred_bpm'], 3)
+
+    return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']][len(hour_forecast) - 72:].to_dict('records')}
+
 
 @app.get("/get_save_dates2/{user_email}")
 async def get_save_dates(user_email: str):
