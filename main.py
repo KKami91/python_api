@@ -452,7 +452,24 @@ async def check_db_query(request: UserEmailRequest):
     print(f'MongoDB 저장 : {mongo_end_time - mongo_start_time}s')
     
     
+@app.get("/feature_day/{user_email}")
+async def bpm_day_feature(user_email: str):
     
+    mongo_bpm_df = pd.DataFrame(bpm.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
+    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
+
+    day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=730)]
+    day_group = day_df.groupby(day_df['ds'].dt.floor('d'))
+    day_hrv = day_group.apply(calc_hrv).reset_index()
+    
+    day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
+    print(day_hrv)
+    print('------------------------------------------')
+    
+    return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}    
 
 @app.get("/predict_minute/{user_email}")
 async def bpm_minute_predict(user_email: str):
