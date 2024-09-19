@@ -471,6 +471,26 @@ async def bpm_day_feature(user_email: str):
     
     return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}    
 
+@app.get("/feature_hour/{user_email}")
+async def bpm_hour_feature(user_email: str):
+    # 서버 HRV 계산 hour (6)
+    hrv_hour_start_time = time.time()
+    mongo_bpm_df = pd.DataFrame(bpm.find_one({'user_email': user_email})['data'])
+    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
+    mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+    mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
+    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
+
+    hour_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=180)]
+    hour_group = hour_df.groupby(hour_df['ds'].dt.floor('h'))
+    hour_hrv = hour_group.apply(calc_hrv).reset_index()
+    
+    hour_hrv.rename(columns={'rmssd' : 'hour_rmssd', 'sdnn' : 'hour_sdnn'}, inplace=True)
+    hrv_hour_end_time = time.time()
+    print(f'HRV 계산 hour 걸린 시간 : {hrv_hour_end_time - hrv_hour_start_time}')
+
+    return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
+
 @app.get("/predict_minute/{user_email}")
 async def bpm_minute_predict(user_email: str):
     # 서버 BPM Prediction minute (4)
