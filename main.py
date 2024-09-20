@@ -85,6 +85,7 @@ sleep_div = db.sleep_div
 
 @app.post("/check_db3_div")
 async def check_db_query_div(request: UserEmailRequest):
+    check_db3_div_start_time = datetime.now()
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
     collection_names_div = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
@@ -96,12 +97,13 @@ async def check_db_query_div(request: UserEmailRequest):
     # print(f'json_data ---> {json_data}')
     df_data = [create_df_div(json_data[x]) for x in range(len(json_data))]
     dynamo_end_time = datetime.now()
-    print(f'DynamoDB Data 불러오기 및 DataFrame 생성 : {dynamo_end_time - dynamo_start_time}s')
+    print(f'DynamoDB Data 불러오기 및 DataFrame 생성 (1) : {dynamo_end_time - dynamo_start_time}s')
     
     mongo_start_time = datetime.now()
     [update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))]
     mongo_end_time = datetime.now()
-    print(f'MongoDB 저장 : {mongo_end_time - mongo_start_time}')
+    print(f'MongoDB 저장 : {mongo_end_time - mongo_start_time} (2)')
+    print(f'In Python ---> check_db3_div 끝나는데 까지 시간 @@ (1+2) : {mongo_end_time - check_db3_div_start_time}')
     
     
 def exist_collection_div(user_email, collections):
