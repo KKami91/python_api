@@ -18,6 +18,8 @@ import numpy as np
 import math
 import neurokit2 as nk
 import time
+from motor.motor_asyncio import AsyncIOMotorClient
+import asyncio
 
 app = FastAPI()
 load_dotenv()
@@ -49,7 +51,8 @@ dynamodb = boto3.client('dynamodb',
 
 
 MONGODB_URI = os.getenv('MONGODB_URI')
-client = MongoClient(MONGODB_URI)
+#client = MongoClient(MONGODB_URI)
+client = AsyncIOMotorClient(MONGODB_URI)
 db = client.get_database("heart_rate_db")
 prediction_collection = db.prediction_results
 analysis_collection = db.analysis_results
@@ -82,10 +85,10 @@ calorie_div = db.calorie_div
 sleep_div = db.sleep_div
 
 ################ 데이터 저장 테스트 ##################
-bpm_t = db.bpm_t
-step_t = db.step_test
-calorie_t = db.calorie_test
-sleep_t = db.sleep_test
+bpm_test2 = db.bpm_test2
+step_test2 = db.step_test2
+calorie_test2 = db.calorie_test2
+sleep_test2 = db.sleep_test2
 
 
 ########## dynamodb process time check ##########
@@ -97,17 +100,18 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
-    collection_names_div = ['bpm_t', 'step_t', 'calorie_t', 'sleep_t']
+    collection_names_div = ['bpm_test2', 'step_test2', 'calorie_test2', 'sleep_test2']
 
     # MongoDB 컬렉션에 데이터가 존재하는지 걸린 시간 -> exist_items_end_time - exist_items_start_time
     exist_items_start_time = datetime.now()
-    exist_times = exist_collection_div(user_email, collection_names_div)
+    exist_times = await exist_collection_div(user_email, collection_names_div)
     exist_items_end_time = datetime.now()
     print(f'In Python ---> MongoDB 컬렉션 데이터 존재 유무 체크 걸린 시간 @@ : {exist_items_end_time - exist_items_start_time}')
     
     # DynamoDB 데이터 query 걸린 시간 
     query_start_time = datetime.now()
     json_data = [new_query_div(user_email, record_names[x], exist_times[x]) for x in range(len(exist_times))]
+    # print('json_data : ', json_data)
     query_end_time = datetime.now()
     print(f'In Python ---> dynamoDB 데이터 query 걸린 시간 @@ : {query_end_time - query_start_time}')
     
@@ -116,10 +120,10 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     create_df_start_time = datetime.now()
     df_data = [create_df_div(json_data[x]) for x in range(len(json_data))]
     create_df_end_time = datetime.now()
-    print(f'In Python ---> dynamoDB 데이터 query 걸린 시간 @@ : {create_df_end_time - create_df_start_time}')
+    print(f'In Python ---> dynamoDB 데이터 데이터프레임 만드는데 걸린 시간 @@ : {create_df_end_time - create_df_start_time}')
     
     mongo_save_start_time = datetime.now()
-    [update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))]
+    await asyncio.gather(*[update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
     mongo_save_end_time = datetime.now()
     print(f'In Python ---> MongoDB 저장 : {mongo_save_end_time - mongo_save_start_time} (2)')
     
@@ -155,24 +159,47 @@ async def check_db_query_div(request: UserEmailRequest):
     print(f'In Python ---> check_db3_div 끝나는데 까지 시간 @@ (1+2) : {mongo_end_time - check_db3_div_start_time}')
     
     
-def exist_collection_div(user_email, collections):
+# def exist_collection_div(user_email, collections):
+#     res_idx = []
+#     collection_list_name = db.list_collection_names()
+#     for idx in collections:
+#         if idx not in collection_list_name:
+#             db.create_collection(idx)
+#             if idx == 'sleep_div':
+#                 db[idx].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
+#             else:
+#                 db[idx].create_index([('user_email', ASCENDING), ('timestamp', ASCENDING)])
+#         else:
+#             if eval(idx).find_one({'user_email': user_email}) == None:
+#                 res_idx.append('0000-00-00T00:00:00')
+#             else:
+#                 if idx == 'sleep_div':
+#                     res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp_end']))
+#                 else:
+#                     res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp']))
+#     return res_idx
+
+async def exist_collection_div(user_email, collections):
     res_idx = []
-    collection_list_name = db.list_collection_names()
+    collection_list_name = await db.list_collection_names()
     for idx in collections:
         if idx not in collection_list_name:
-            db.create_collection(idx)
-            if idx == 'sleep_div':
-                db[idx].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
+            await db.create_collection(idx)
+            if idx == 'sleep_test':
+                await db[idx].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
             else:
-                db[idx].create_index([('user_email', ASCENDING), ('timestamp', ASCENDING)])
+                await db[idx].create_index([('user_email', ASCENDING), ('timestamp', ASCENDING)])
+            res_idx.append('0000-00-00T00:00:00')
         else:
-            if eval(idx).find_one({'user_email': user_email}) == None:
+            collection = db[idx]
+            doc = await collection.find_one({'user_email': user_email}, sort=[('_id', DESCENDING)])
+            if doc is None:
                 res_idx.append('0000-00-00T00:00:00')
             else:
-                if idx == 'sleep_div':
-                    res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp_end']))
+                if idx == 'sleep_test':
+                    res_idx.append(str(doc['timestamp_end']))
                 else:
-                    res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp']))
+                    res_idx.append(str(doc['timestamp']))
     return res_idx
 
 
@@ -296,7 +323,54 @@ def prepare_docs(user_email, df, data_type):
 
     
 
-def update_db_div(user_email, df, collection):
+# def update_db_div(user_email, df, collection):
+#     if len(df) == 0:
+#         return 0
+#     # prepare_docs() 구조 bpm, step, calorie, step 들어가야
+#     start_doc = time.time()
+#     documents = prepare_docs(user_email, df, collection)
+#     end_doc = time.time()
+#     # print(documents)
+#     print(f'{user_email} - {collection} prepare_docs 걸린 시간 : {end_doc - start_doc}')
+    
+    
+#     if collection[:collection.find('_')] == 'sleep':
+#         bulk_operations = [
+#             UpdateOne(
+#                 {
+#                     'user_email': doc['user_email'],
+#                     'timestamp_start': doc['timestamp_start'],
+#                 },
+#                 {'$set':doc},
+#                 upsert=True
+#             ) for doc in documents
+#         ]
+        
+#     else:
+#         bulk_operations = [
+#             UpdateOne(
+#                 {
+#                     'user_email': doc['user_email'],
+#                     'timestamp': doc['timestamp']
+#                 },
+#                 {'$set':doc},
+#                 upsert=True
+#             ) for doc in documents
+#         ]
+        
+#     batch_size = 5000
+#     total_operations = len(bulk_operations)
+    
+#     start_time = time.time()
+    
+#     for i in range(0, total_operations, batch_size):
+#         batch = bulk_operations[i:i+batch_size]
+#         eval(collection).bulk_write(batch, ordered=False)
+        
+#     end_time = time.time()
+#     print(f'{user_email} 사용자의 {collection} Data 저장 걸린 시간 --> {end_time - start_doc}')
+
+async def update_db_div(user_email, df, collection):
     if len(df) == 0:
         return 0
     # prepare_docs() 구조 bpm, step, calorie, step 들어가야
@@ -331,14 +405,14 @@ def update_db_div(user_email, df, collection):
             ) for doc in documents
         ]
         
-    batch_size = 5000
+    batch_size = 10000
     total_operations = len(bulk_operations)
     
     start_time = time.time()
     
     for i in range(0, total_operations, batch_size):
         batch = bulk_operations[i:i+batch_size]
-        eval(collection).bulk_write(batch, ordered=False)
+        await eval(collection).bulk_write(batch, ordered=False)
         
     end_time = time.time()
     print(f'{user_email} 사용자의 {collection} Data 저장 걸린 시간 --> {end_time - start_doc}')
