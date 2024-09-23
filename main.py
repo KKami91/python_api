@@ -81,6 +81,54 @@ step_div = db.step_div
 calorie_div = db.calorie_div
 sleep_div = db.sleep_div
 
+################ 데이터 저장 테스트 ##################
+bpm_test = db.bpm_test
+step_test = db.step_test
+calorie_test = db.calorie_test
+sleep_test = db.sleep_test
+
+
+########## dynamodb process time check ##########
+@app.post("/check_db3_dynamodb")
+async def check_db_query_div_dynamodb(request: UserEmailRequest):
+    # 전체 check DB 걸린 시간 -> all_end_time - all_start_time
+    all_start_time = datetime.now()
+    
+    user_email = request.user_email
+    record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
+    collection_names_div = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
+    
+    # MongoDB 컬렉션에 데이터가 존재하는지 걸린 시간 -> exist_items_end_time - exist_items_start_time
+    exist_items_start_time = datetime.now()
+    exist_times = exist_collection_div(user_email, collection_names_div)
+    exist_items_end_time = datetime.now()
+    print(f'In Python ---> MongoDB 컬렉션 데이터 존재 유무 체크 걸린 시간 @@ : {exist_items_end_time - exist_items_start_time}')
+    
+    # DynamoDB 데이터 query 걸린 시간 
+    query_start_time = datetime.now()
+    json_data = [new_query_div(user_email, record_names[x], exist_times[x]) for x in range(len(exist_times))]
+    query_end_time = datetime.now()
+    print(f'In Python ---> dynamoDB 데이터 query 걸린 시간 @@ : {query_end_time - query_start_time}')
+    
+    
+    # DataFrame 만드는데 걸린 시간 
+    create_df_start_time = datetime.now()
+    df_data = [create_df_div(json_data[x]) for x in range(len(json_data))]
+    create_df_end_time = datetime.now()
+    print(f'In Python ---> dynamoDB 데이터 query 걸린 시간 @@ : {create_df_end_time - create_df_start_time}')
+    
+    mongo_save_start_time = datetime.now()
+    [update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))]
+    mongo_save_end_time = datetime.now()
+    print(f'In Python ---> MongoDB 저장 : {mongo_save_end_time - mongo_save_start_time} (2)')
+    
+    all_end_time = datetime.now()
+    print(f'In Python ---> 전체 끝나는데 까지 걸린 시간 @@ : {all_end_time - all_start_time}')
+
+########################################################
+
+
+
 
 
 @app.post("/check_db3_div")
@@ -88,7 +136,7 @@ async def check_db_query_div(request: UserEmailRequest):
     check_db3_div_start_time = datetime.now()
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
-    collection_names_div = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
+    collection_names_div = ['bpm_test', 'step_test', 'calorie_test', 'sleep_test']
     
     dynamo_start_time = datetime.now()
     exist_times = exist_collection_div(user_email, collection_names_div)
@@ -120,6 +168,8 @@ def exist_collection_div(user_email, collections):
 
 
 def new_query_div(user_email, record_name, start_time):
+    # 각 컬렉션 별 query 걸린 시간 체크...
+    dynamodb_query_start_time = datetime.now()
     new_items = []
     start_time = start_time
     last_evaluated_key = None
@@ -154,6 +204,9 @@ def new_query_div(user_email, record_name, start_time):
             last_evaluated_key = response.get('LastEvaluatedKey')
             if not last_evaluated_key:
                 break
+            
+        dynamodb_query_end_time = datetime.now()
+        print(f'{user_email} 사용자의 {record_name} Data 걸린 시간 체크 : {dynamodb_query_end_time - dynamodb_query_start_time}')
     
         return new_items
 
@@ -196,7 +249,7 @@ def prepare_docs(user_email, df, data_type):
     # print('in prepare_docs --> ', df)
     # print('data_type', data_type)
     # print("data_type[:data_type.find('_')]", data_type[:data_type.find('_')])
-    print('in prepare_docs ---- > : ', data_type)
+    # print('in prepare_docs ---- > : ', data_type)
     if data_type[:data_type.find('_')] == 'calorie':
         print('is in calorie Data ----- : ', df, len(df))
         return [
@@ -279,7 +332,7 @@ def update_db_div(user_email, df, collection):
         eval(collection).bulk_write(batch, ordered=False)
         
     end_time = time.time()
-    print(f'{collection} 저장 시간 --> {end_time - start_time}')
+    print(f'{user_email} 사용자의 {collection} Data 저장 걸린 시간 --> {end_time - start_doc}')
 
 def calc_hrv(group_):
     rr_intervals = 60000/group_['bpm'].values
