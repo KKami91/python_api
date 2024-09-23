@@ -87,7 +87,6 @@ step_t = db.step_test
 calorie_t = db.calorie_test
 sleep_t = db.sleep_test
 
-def ex
 
 ########## dynamodb process time check ##########
 @app.post("/check_db3_dynamodb")
@@ -99,9 +98,7 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
     collection_names_div = ['bpm_t', 'step_t', 'calorie_t', 'sleep_t']
-    
-    exist_coll
-    
+
     # MongoDB 컬렉션에 데이터가 존재하는지 걸린 시간 -> exist_items_end_time - exist_items_start_time
     exist_items_start_time = datetime.now()
     exist_times = exist_collection_div(user_email, collection_names_div)
