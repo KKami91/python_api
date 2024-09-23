@@ -96,7 +96,7 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
-    collection_names_div = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
+    collection_names_div = ['bpm_test', 'step_test', 'calorie_test', 'sleep_test']
     
     # MongoDB 컬렉션에 데이터가 존재하는지 걸린 시간 -> exist_items_end_time - exist_items_start_time
     exist_items_start_time = datetime.now()
@@ -136,7 +136,7 @@ async def check_db_query_div(request: UserEmailRequest):
     check_db3_div_start_time = datetime.now()
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
-    collection_names_div = ['bpm_test', 'step_test', 'calorie_test', 'sleep_test']
+    collection_names_div = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
     
     dynamo_start_time = datetime.now()
     exist_times = exist_collection_div(user_email, collection_names_div)
