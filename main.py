@@ -157,19 +157,22 @@ async def check_db_query_div(request: UserEmailRequest):
     
 def exist_collection_div(user_email, collections):
     res_idx = []
+    collection_list_name = db.list_collection_names()
     for idx in collections:
-        if eval(idx).find_one({'user_email': user_email}) == None:
-            db.create_collection(collections)
+        if idx not in collection_list_name:
+            db.create_collection(idx)
             if idx == 'sleep_div':
-                db[collections].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
+                db[idx].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
             else:
-                db[collections].create_inex([('user_email', ASCENDING), ('timestamp', ASCENDING)])
-            res_idx.append('0000-00-00T00:00:00')
+                db[idx].create_index([('user_email', ASCENDING), ('timestamp', ASCENDING)])
         else:
-            if idx == 'sleep_div':
-                res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp_end']))
+            if eval(idx).find_one({'user_email': user_email}) == None:
+                res_idx.append('0000-00-00T00:00:00')
             else:
-                res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp']))
+                if idx == 'sleep_div':
+                    res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp_end']))
+                else:
+                    res_idx.append(str(eval(idx).find_one({'user_email':user_email}, sort=[('_id', DESCENDING)])['timestamp']))
     return res_idx
 
 
