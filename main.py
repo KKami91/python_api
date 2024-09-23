@@ -12,7 +12,7 @@ from dateutil import relativedelta
 from datetime import timedelta
 from typing import Optional
 from dotenv import load_dotenv
-from pymongo import MongoClient, DESCENDING, UpdateOne
+from pymongo import MongoClient, DESCENDING, UpdateOne, ASCENDING
 from urllib.parse import unquote
 import numpy as np
 import math
@@ -82,21 +82,25 @@ calorie_div = db.calorie_div
 sleep_div = db.sleep_div
 
 ################ 데이터 저장 테스트 ##################
-bpm_test = db.bpm_test
-step_test = db.step_test
-calorie_test = db.calorie_test
-sleep_test = db.sleep_test
+bpm_t = db.bpm_t
+step_t = db.step_test
+calorie_t = db.calorie_test
+sleep_t = db.sleep_test
 
+def ex
 
 ########## dynamodb process time check ##########
 @app.post("/check_db3_dynamodb")
 async def check_db_query_div_dynamodb(request: UserEmailRequest):
+    
     # 전체 check DB 걸린 시간 -> all_end_time - all_start_time
     all_start_time = datetime.now()
     
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
-    collection_names_div = ['bpm_test', 'step_test', 'calorie_test', 'sleep_test']
+    collection_names_div = ['bpm_t', 'step_t', 'calorie_t', 'sleep_t']
+    
+    exist_coll
     
     # MongoDB 컬렉션에 데이터가 존재하는지 걸린 시간 -> exist_items_end_time - exist_items_start_time
     exist_items_start_time = datetime.now()
@@ -158,6 +162,11 @@ def exist_collection_div(user_email, collections):
     res_idx = []
     for idx in collections:
         if eval(idx).find_one({'user_email': user_email}) == None:
+            db.create_collection(collections)
+            if idx == 'sleep_div':
+                db[collections].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
+            else:
+                db[collections].create_inex([('user_email', ASCENDING), ('timestamp', ASCENDING)])
             res_idx.append('0000-00-00T00:00:00')
         else:
             if idx == 'sleep_div':
