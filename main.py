@@ -100,6 +100,9 @@ calorie_test2 = db.calorie_test2
 sleep_test2 = db.sleep_test2
 
 
+rmssd = db.rmssd
+sdnn = db.sdnn
+
 ########## dynamodb process time check ##########
 @app.post("/check_db3_dynamodb")
 async def check_db_query_div_dynamodb(request: UserEmailRequest):
@@ -684,34 +687,155 @@ async def get_bpm_all_data(user_email):
         results.append(document)
     return results
 
+async def get_hrv_all_data(user_email):
+    cursor_rmssd = rmssd.find({'user_email': user_email})
+    cursor_sdnn = sdnn.find({'user_email': user_email})
+    results_rmssd = []
+    results_sdnn = []
+    async for document_rmssd in cursor_rmssd:
+        results_rmssd.append(document_rmssd)
+    async for document_sdnn in cursor_sdnn:
+        results_sdnn.append(document_sdnn)
+        
+        
+    print(f'in get_hrv_all_data ---- results_rmssd length : {len(results_rmssd)}')
+    print(f'in get_hrv_all_data ---- results_sdnn length : {len(results_sdnn)}')
+    return results_rmssd, results_sdnn
+
+# @app.get("/feature_day_div/{user_email}")
+# async def bpm_day_feature(user_email: str):
+#     # query = bpm_div.find({'user_email': user_email})
+#     query = await get_bpm_all_data(user_email)
+#     # print('in feature_day -> query -> : ', query)
+#     # list_query = list(query)
+
+#     # print('-------->>>> list_query : ', list_query)
+#     # mongo_bpm_df = pd.DataFrame({
+#     #     'ds': [list_query[x]['timestamp'] for x in range(len(list_query))],
+#     #     'bpm': [list_query[x]['value'] for x in range(len(list_query))]
+#     # })
+    
+#     mongo_bpm_df = pd.DataFrame({
+#         'ds': [doc['timestamp'] for doc in query],
+#         'bpm': [doc['value'] for doc in query]
+#     })
+    
+#     mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
+#     #mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
+#     #mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
+#     mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
+
+#     #day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=730)]
+#     day_group = mongo_bpm_df.groupby(mongo_bpm_df['ds'].dt.floor('d'))
+#     day_hrv = day_group.apply(calc_hrv).reset_index()
+    
+#     day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
+
+#     return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
+
+# Heatmap 수정본
+def save_hrv(user_email, hrv_df):
+    print(f'{user_email} ----> save_hrv 저장 구간 진입')
+    save_hrv_start_time = datetime.now()
+    rmssd_df = hrv_df[['ds', 'day_rmssd']]
+    sdnn_df = hrv_df[['ds', 'day_sdnn']]
+
+    rmssd_docs = prepare_docs_hrv(user_email, rmssd_df)
+    sdnn_docs = prepare_docs_hrv(user_email, sdnn_df)
+
+    rmssd_bulk_operations = [
+        UpdateOne(
+            {
+                'user_email': rmssd_doc['user_email'],
+                'timestamp': rmssd_doc['timestamp'],
+            },
+            {'$set':rmssd_doc},
+            upsert=True
+        ) for rmssd_doc in rmssd_docs
+    ]
+
+    sdnn_bulk_operations = [
+        UpdateOne(
+            {
+                'user_email': sdnn_doc['user_email'],
+                'timestamp': sdnn_doc['timestamp'],
+            },
+            {'$set':sdnn_doc},
+            upsert=True
+        ) for sdnn_doc in sdnn_docs
+    ]
+
+    batch_size = 10000
+    rmssd_total_operations = len(rmssd_bulk_operations)
+    sdnn_total_operations = len(sdnn_bulk_operations)
+    
+    for i in range(0, rmssd_total_operations, batch_size):
+        batch = rmssd_bulk_operations[i:i+batch_size]
+        rmssd.bulk_write(batch, ordered=False)
+
+    for i in range(0, sdnn_total_operations, batch_size):
+        batch = sdnn_bulk_operations[i:i+batch_size]
+        sdnn.bulk_write(batch, ordered=False)
+        
+    save_hrv_end_time = datetime.now()
+    print(f'{user_email} --- save_hrv 걸린 시간 : {save_hrv_end_time - save_hrv_start_time} ---> 총 길이, {len(rmssd_df)}')
+
+
+
+def prepare_docs_hrv(user_email, df):
+    return [
+        {
+            'user_email': user_email,
+            'type': df.columns[1],
+            'value': np.round(float(row[df.columns[1]]), 3),
+            'timestamp': row['ds']
+        }
+        for row in df.to_dict('records')
+    ]
+
+
 @app.get("/feature_day_div/{user_email}")
 async def bpm_day_feature(user_email: str):
-    # query = bpm_div.find({'user_email': user_email})
-    query = await get_bpm_all_data(user_email)
-    # print('in feature_day -> query -> : ', query)
-    # list_query = list(query)
-
-    # print('-------->>>> list_query : ', list_query)
-    # mongo_bpm_df = pd.DataFrame({
-    #     'ds': [list_query[x]['timestamp'] for x in range(len(list_query))],
-    #     'bpm': [list_query[x]['value'] for x in range(len(list_query))]
-    # })
+    # 추가적으로 BPM 데이터 업데이트 하는 부분도 필요.
+    update_bpm_ds = await exist_collection_div(user_email, ['bpm_test2'])
+    # print(update_bpm_ds)
+    update_bpm_data = new_query_div(user_email, 'HeartRate', update_bpm_ds[0])
+    # print(update_bpm_data)
+    if len(update_bpm_data) > 0:
+        update_df = create_df_div(update_bpm_data)
+        await update_db_div(user_email, update_df, 'bpm_test2')
+        # update_db_div(user_email, update_df, bpm_test2)
     
-    mongo_bpm_df = pd.DataFrame({
-        'ds': [doc['timestamp'] for doc in query],
-        'bpm': [doc['value'] for doc in query]
+    
+    
+    rmssd_last_date = await rmssd.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    bpm_last_date = await bpm_test2.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    
+    # 업데이트 된 데이터가 있다면, HRV Data 마지막 timestamp <-> BPM 데이터 마지막 timestamp 비교
+    if bpm_last_date['timestamp'] - rmssd_last_date['timestamp'] > timedelta(days=1):
+        update_rmssd_query = await bpm_test2.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
+        update_rmssd_df = pd.DataFrame({
+                'ds': pd.to_datetime([update_rmssd_query[x]['timestamp'] for x in range(len(update_rmssd_query))]),
+                'bpm': [int(update_rmssd_query[x]['value']) for x in range(len(update_rmssd_query))]
+            })
+        day_group = update_rmssd_df.groupby(update_rmssd_df['ds'].dt.floor('d'))
+        day_hrv = day_group.apply(calc_hrv).reset_index()
+
+        day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
+        
+        save_hrv(user_email, day_hrv)
+    
+    # 길이 계산 오류 때문에..
+    rmssd_query = await rmssd.find({'user_email': user_email}).to_list(length=None)
+    # sdnn_query = await sdnn.find({'user_email': user_email}).to_list(length=None)
+    
+    rmssd_res, sdnn_res = await get_hrv_all_data(user_email)
+    day_hrv = pd.DataFrame({
+        'ds': [doc['timestamp'] for doc in rmssd_res],
+        'day_rmssd': [doc['value'] for doc in rmssd_res],
+        'day_sdnn': [doc['value'] for doc in sdnn_res]
     })
-    
-    mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
-    #mongo_bpm_df['hour_rounded'] = mongo_bpm_df['ds'].dt.floor('h')
-    #mongo_bpm_df['day_rounded'] = mongo_bpm_df['ds'].dt.floor('d')
-    mongo_bpm_df = mongo_bpm_df.astype({'bpm': 'int32'})
 
-    #day_df = mongo_bpm_df[mongo_bpm_df.day_rounded >= mongo_bpm_df.day_rounded[len(mongo_bpm_df) - 1] - timedelta(days=730)]
-    day_group = mongo_bpm_df.groupby(mongo_bpm_df['ds'].dt.floor('d'))
-    day_hrv = day_group.apply(calc_hrv).reset_index()
-    
-    day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
 
     return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
 
