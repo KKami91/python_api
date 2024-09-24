@@ -794,6 +794,29 @@ def prepare_docs_hrv(user_email, df):
     ]
 
 
+# Heatmap 수정본
+async def get_hrv_all_data(user_email):
+    cursor_rmssd = rmssd.find({'user_email': user_email})
+    cursor_sdnn = sdnn.find({'user_email': user_email})
+    results_rmssd = await cursor_rmssd.to_list(length=None)
+    results_sdnn = await cursor_sdnn.to_list(length=None)
+
+    df_rmssd = pd.DataFrame({
+        'ds': [doc['timestamp'] for doc in results_rmssd],
+        'day_rmssd': [doc['value'] for doc in results_rmssd]
+    })
+    df_sdnn = pd.DataFrame({
+        'ds': [doc['timestamp'] for doc in results_sdnn],
+        'day_sdnn': [doc['value'] for doc in results_sdnn]
+    })
+
+    df_merged = pd.merge(df_rmssd, df_sdnn, on='ds', how='outer')
+
+    df_merged = df_merged.sort_values('ds').reset_index(drop=True)
+    
+    return df_merged
+
+
 @app.get("/feature_day_div/{user_email}")
 async def bpm_day_feature(user_email: str):
     # 추가적으로 BPM 데이터 업데이트 하는 부분도 필요.
@@ -811,6 +834,10 @@ async def bpm_day_feature(user_email: str):
     rmssd_last_date = await rmssd.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     bpm_last_date = await bpm_test2.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     
+    print(rmssd_last_date)
+    
+    if rmssd_last_date == None:
+        rmssd_last_date = {'timestamp': datetime(1,1,1)}
     # 업데이트 된 데이터가 있다면, HRV Data 마지막 timestamp <-> BPM 데이터 마지막 timestamp 비교
     if bpm_last_date['timestamp'] - rmssd_last_date['timestamp'] > timedelta(days=1):
         update_rmssd_query = await bpm_test2.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
@@ -826,15 +853,18 @@ async def bpm_day_feature(user_email: str):
         save_hrv(user_email, day_hrv)
     
     # 길이 계산 오류 때문에..
-    rmssd_query = await rmssd.find({'user_email': user_email}).to_list(length=None)
+    # rmssd_query = await rmssd.find({'user_email': user_email}).to_list(length=None)
     # sdnn_query = await sdnn.find({'user_email': user_email}).to_list(length=None)
     
-    rmssd_res, sdnn_res = await get_hrv_all_data(user_email)
-    day_hrv = pd.DataFrame({
-        'ds': [doc['timestamp'] for doc in rmssd_res],
-        'day_rmssd': [doc['value'] for doc in rmssd_res],
-        'day_sdnn': [doc['value'] for doc in sdnn_res]
-    })
+    
+    # rmssd_res, sdnn_res = await get_hrv_all_data(user_email)
+    # day_hrv = pd.DataFrame({
+    #     'ds': [doc['timestamp'] for doc in rmssd_res],
+    #     'day_rmssd': [doc['value'] for doc in rmssd_res],
+    #     'day_sdnn': [doc['value'] for doc in sdnn_res]
+    # })
+    
+    day_hrv = await get_hrv_all_data(user_email)
 
 
     return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
