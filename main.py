@@ -922,7 +922,7 @@ async def bpm_minute_predict(user_email: str):
     start_time = datetime.now()
     
     last_bpm_data = await bpm_test2.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
-    query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=7))
+    query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=15))
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
         'bpm': [doc['value'] for doc in query]
