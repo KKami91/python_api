@@ -413,7 +413,7 @@ async def update_db_div(user_email, df, collection):
         await eval(collection).bulk_write(batch, ordered=False)
         
     end_time = time.time()
-    print(f'{user_email} 사용자의 {collection} Data 저장 걸린 시간 --> {end_time - start_doc}')
+    print(f'{user_email} 사용자의 {collection} Data 저장 걸린 시간 --> {end_time - start_doc}, 데이터 저장 length : {total_operations}')
 
 
     
@@ -460,6 +460,7 @@ async def get_bpm_all_data(user_email, start_date):
     return results
 
 async def get_hrv_all_data(user_email):
+    get_hrv_day_start_time = datetime.now()
     cursor_rmssd = rmssd_test.find({'user_email': user_email})
     cursor_sdnn = sdnn_test.find({'user_email': user_email})
     results_rmssd = await cursor_rmssd.to_list(length=None)
@@ -477,12 +478,15 @@ async def get_hrv_all_data(user_email):
     df_merged = pd.merge(df_rmssd, df_sdnn, on='ds', how='outer')
 
     df_merged = df_merged.sort_values('ds').reset_index(drop=True)
+    get_hrv_day_end_time = datetime.now()
+    print(f'hrv_day_data find + dataframe 생성 걸린 시간 : {get_hrv_day_end_time - get_hrv_day_start_time}')
     
     return df_merged
 
 # Heatmap 수정본
 @app.get("/feature_day_div/{user_email}")
 async def bpm_day_feature(user_email: str):
+    feature_day_start_time = datetime.now()
     # 추가적으로 BPM 데이터 업데이트 하는 부분도 필요.
     update_bpm_ds = await exist_collection_div(user_email, ['bpm_test'])
     # print(update_bpm_ds)
@@ -517,6 +521,8 @@ async def bpm_day_feature(user_email: str):
         save_hrv(user_email, day_hrv)
 
     day_hrv = await get_hrv_all_data(user_email)
+    feature_day_end_time = datetime.now()
+    print(f'feature_day_div 걸린 시간 : {feature_day_end_time - feature_day_start_time}')
 
 
     return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
