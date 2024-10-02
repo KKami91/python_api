@@ -529,8 +529,8 @@ async def bpm_minute_predict(user_email: str):
         changepoint_prior_scale=0.0001,
         seasonality_mode='multiplicative',
     )
-    min_model.add_seasonality(name='hourly', period=24, fourier_order=5)
-    min_model.add_country_holidays(country_name='KOR')
+    # min_model.add_seasonality(name='hourly', period=24, fourier_order=5)
+    # min_model.add_country_holidays(country_name='KOR')
     min_model.fit(mongo_bpm_df)
     
     min_future = min_model.make_future_dataframe(periods=60*24*1, freq='min')
