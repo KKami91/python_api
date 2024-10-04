@@ -79,6 +79,13 @@ rmssd = db.rmssd
 sdnn = db.sdnn
 
 
+bpm_test3 = db.bpm_test3
+step_test3 = db.step_test3
+calorie_test3 = db.calorie_test3
+sleep_test3 = db.sleep_test3
+rmssd3 = db.rmssd3
+sdnn3 = db.sdnn3
+
 ########## dynamodb process time check ##########
 @app.post("/check_db3_dynamodb")
 async def check_db_query_div_dynamodb(request: UserEmailRequest):
@@ -88,7 +95,7 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
-    collection_names_div = ['bpm_test2', 'step_test2', 'calorie_test2', 'sleep_test2']
+    collection_names_div = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
 
     # MongoDB 컬렉션에 데이터가 존재하는지 걸린 시간 -> exist_items_end_time - exist_items_start_time
     exist_items_start_time = datetime.now()
@@ -153,11 +160,11 @@ def save_hrv(user_email, hrv_df):
     
     for i in range(0, rmssd_total_operations, batch_size):
         batch = rmssd_bulk_operations[i:i+batch_size]
-        rmssd.bulk_write(batch, ordered=False)
+        rmssd3.bulk_write(batch, ordered=False)
 
     for i in range(0, sdnn_total_operations, batch_size):
         batch = sdnn_bulk_operations[i:i+batch_size]
-        sdnn.bulk_write(batch, ordered=False)
+        sdnn3.bulk_write(batch, ordered=False)
         
     save_hrv_end_time = datetime.now()
     print(f'{user_email} --- save_hrv 걸린 시간 : {save_hrv_end_time - save_hrv_start_time} ---> 총 길이, {len(rmssd_df)}')
@@ -218,7 +225,7 @@ async def exist_collection_div(user_email, collections):
     for idx in collections:
         if idx not in collection_list_name:
             await db.create_collection(idx)
-            if idx == 'sleep_test2':
+            if idx == 'sleep_test3':
                 await db[idx].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
             else:
                 await db[idx].create_index([('user_email', ASCENDING), ('timestamp', ASCENDING)])
@@ -230,7 +237,7 @@ async def exist_collection_div(user_email, collections):
             if doc is None:
                 res_idx.append('0000-00-00T00:00:00')
             else:
-                if idx == 'sleep_test2':
+                if idx == 'sleep_test3':
                     print('-------', idx, '------')
                     res_idx.append(str(doc['timestamp_end']))
                 else:
@@ -413,11 +420,11 @@ async def get_save_dates(user_email: str):
 
 @app.get("/get_save_dates_div/{user_email}")
 async def get_save_dates_div(user_email: str):
-    collections = ['bpm_test2', 'step_test2', 'calorie_test2', 'sleep_test2']
+    collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
     return {"save_dates": [max(await exist_collection_div(user_email, collections))]}
 
 async def get_bpm_hour_data(user_email, start_date, end_date):
-    cursor = bpm_test2.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(str(start_date)[:-3])), '$lte': datetime.fromtimestamp(int(str(end_date)[:-3]))}})
+    cursor = bpm_test3.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(str(start_date)[:-3])), '$lte': datetime.fromtimestamp(int(str(end_date)[:-3]))}})
     results = []
     async for document in cursor:
         results.append(document)
@@ -444,13 +451,13 @@ async def bpm_hour_feature(user_email: str, start_date: str, end_date: str):
     return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
 
 async def get_bpm_all_data(user_email, start_date):
-    cursor = bpm_test2.find({'user_email': user_email, 'timestamp': {'$gte': start_date}})
+    cursor = bpm_test3.find({'user_email': user_email, 'timestamp': {'$gte': start_date}})
     results = await cursor.to_list(length=None)
     return results
 
 async def get_hrv_all_data(user_email):
-    cursor_rmssd = rmssd.find({'user_email': user_email})
-    cursor_sdnn = sdnn.find({'user_email': user_email})
+    cursor_rmssd = rmssd3.find({'user_email': user_email})
+    cursor_sdnn = sdnn3.find({'user_email': user_email})
     results_rmssd = await cursor_rmssd.to_list(length=None)
     results_sdnn = await cursor_sdnn.to_list(length=None)
 
@@ -473,19 +480,19 @@ async def get_hrv_all_data(user_email):
 @app.get("/feature_day_div/{user_email}")
 async def bpm_day_feature(user_email: str):
     # 추가적으로 BPM 데이터 업데이트 하는 부분도 필요.
-    update_bpm_ds = await exist_collection_div(user_email, ['bpm_test2'])
+    update_bpm_ds = await exist_collection_div(user_email, ['bpm_test3'])
     # print(update_bpm_ds)
     update_bpm_data = new_query_div(user_email, 'HeartRate', update_bpm_ds[0])
     # print(update_bpm_data)
     if len(update_bpm_data) > 0:
         update_df = create_df_div(update_bpm_data)
-        await update_db_div(user_email, update_df, 'bpm_test2')
+        await update_db_div(user_email, update_df, 'bpm_test3')
         # update_db_div(user_email, update_df, bpm_test2)
     
     
     
-    rmssd_last_date = await rmssd.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
-    bpm_last_date = await bpm_test2.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    rmssd_last_date = await rmssd3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    bpm_last_date = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     
     print(rmssd_last_date)
     
@@ -493,7 +500,7 @@ async def bpm_day_feature(user_email: str):
         rmssd_last_date = {'timestamp': datetime(1,1,1)}
     # 업데이트 된 데이터가 있다면, HRV Data 마지막 timestamp <-> BPM 데이터 마지막 timestamp 비교
     if bpm_last_date['timestamp'] - rmssd_last_date['timestamp'] > timedelta(days=1):
-        update_rmssd_query = await bpm_test2.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
+        update_rmssd_query = await bpm_test3.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
         update_rmssd_df = pd.DataFrame({
                 'ds': pd.to_datetime([update_rmssd_query[x]['timestamp'] for x in range(len(update_rmssd_query))]),
                 'bpm': [int(update_rmssd_query[x]['value']) for x in range(len(update_rmssd_query))]
@@ -518,7 +525,7 @@ async def bpm_minute_predict(user_email: str):
 
     start_time = datetime.now()
     
-    last_bpm_data = await bpm_test2.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    last_bpm_data = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=15))
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
@@ -549,7 +556,7 @@ async def bpm_minute_predict(user_email: str):
 async def bpm_hour_predict(user_email: str):
 
     start_time = datetime.now()
-    last_bpm_data = await bpm_test2.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    last_bpm_data = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=30))
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
