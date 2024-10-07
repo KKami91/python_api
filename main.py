@@ -400,7 +400,7 @@ async def update_db(user_email, df, collection):
 
     async def process_batch(batch):
         try:
-            result = await collection.bulk_write(batch, ordered=False)
+            result = await eval(collection).bulk_write(batch, ordered=False)
             return result.upserted_count + result.modified_count
         except BulkWriteError as bwe:
             print(f"Bulk write error: {bwe.details}")
