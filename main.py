@@ -238,7 +238,10 @@ async def exist_collection_div(user_email, collections):
             res_idx.append('0000-00-00T00:00:00')
         else:
             collection = db[idx]
-            doc = await collection.find_one({'user_email': user_email}, sort=[('_id', DESCENDING)])
+            if idx == 'sleep_test3':
+                await db[idx].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
+            else:
+                await db[idx].create_index([('user_email', ASCENDING), ('timestamp', ASCENDING)])
             print(idx)
             if doc is None:
                 res_idx.append('0000-00-00T00:00:00')
