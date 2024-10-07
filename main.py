@@ -394,7 +394,7 @@ async def update_db(user_email, df, collection):
         ) for doc in documents
     ]
     
-    batch_size = 1000  # Reduced batch size for better performance
+    batch_size = 10000  # Reduced batch size for better performance
     total_operations = len(bulk_operations)
     total_updated = 0
     
