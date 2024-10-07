@@ -371,7 +371,7 @@ def prepare_docs(user_email, df, data_type):
         ]
         
 async def update_db(user_email, df, collection):
-    if df.empty:
+    if len(df) == 0:
         return 0
     
     print(f'user_email : {user_email}, ,df[:3] : {df[:3]}, ,collection : {collection}')
