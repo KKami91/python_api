@@ -117,8 +117,7 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     print(f'In Python ---> dynamoDB 데이터 데이터프레임 만드는데 걸린 시간 @@ : {create_df_end_time - create_df_start_time}')
     
     mongo_save_start_time = datetime.now()
-    #await asyncio.gather(*[update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
-    await asyncio.gather(*[update_db(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
+    await asyncio.gather(*[update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
     mongo_save_end_time = datetime.now()
     print(f'In Python ---> MongoDB 저장 : {mongo_save_end_time - mongo_save_start_time} (2)')
     
@@ -162,11 +161,11 @@ def save_hrv(user_email, hrv_df):
     
     for i in range(0, rmssd_total_operations, batch_size):
         batch = rmssd_bulk_operations[i:i+batch_size]
-        rmssd3.bulk_write(batch, ordered=False)
+        rmssd.bulk_write(batch, ordered=False)
 
     for i in range(0, sdnn_total_operations, batch_size):
         batch = sdnn_bulk_operations[i:i+batch_size]
-        sdnn3.bulk_write(batch, ordered=False)
+        sdnn.bulk_write(batch, ordered=False)
         
     save_hrv_end_time = datetime.now()
     print(f'{user_email} --- save_hrv 걸린 시간 : {save_hrv_end_time - save_hrv_start_time} ---> 총 길이, {len(rmssd_df)}')
@@ -228,20 +227,14 @@ async def exist_collection_div(user_email, collections):
         if idx not in collection_list_name:
             await db.create_collection(idx)
             if idx == 'sleep_test3':
-                await db[idx].create_index([('user_email', ASCENDING)])
-                await db[idx].create_index([('timestamp_start', ASCENDING)])
-                #await db[idx].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
+                await db[idx].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
             else:
-                await db[idx].create_index([('user_email', ASCENDING)])
-                await db[idx].create_index([('timestamp', ASCENDING)])
-                #await db[idx].create_index([('user_email', ASCENDING), ('timestamp', ASCENDING)])
+                await db[idx].create_index([('user_email', ASCENDING), ('timestamp', ASCENDING)])
             res_idx.append('0000-00-00T00:00:00')
         else:
             collection = db[idx]
-            if idx == 'sleep_test3':
-                doc = await collection.find_one({'user_email': user_email}, sort=[('timestamp_start', DESCENDING)])
-            else:
-                doc = await collection.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+            doc = await collection.find_one({'user_email': user_email}, sort=[('_id', DESCENDING)])
+            print(idx)
             if doc is None:
                 res_idx.append('0000-00-00T00:00:00')
             else:
@@ -369,60 +362,6 @@ def prepare_docs(user_email, df, data_type):
             }
             for row in df.to_dict('records')
         ]
-        
-async def update_db(user_email, df, collection):
-    if len(df) == 0:
-        return 0
-    
-    print(f'user_email : {user_email}, ,df[:3] : {df[:3]}, ,collection : {collection}')
-    start_doc = time.time()
-
-    documents = prepare_docs(user_email, df, collection)
-    
-    end_doc = time.time()
-    # print(documents)
-    print(f'{user_email} - {collection} prepare_docs 걸린 시간 : {end_doc - start_doc}')
-    
-    is_sleep_collection = collection.startswith('sleep_')
-    
-    bulk_operations = [
-        UpdateOne(
-            {
-                'user_email': doc['user_email'],
-                'timestamp_start' if is_sleep_collection else 'timestamp': doc['timestamp_start' if is_sleep_collection else 'timestamp'],
-            },
-            {'$set': doc},
-            upsert=True
-        ) for doc in documents
-    ]
-    
-    batch_size = 1000  # Reduced batch size for better performance
-    total_operations = len(bulk_operations)
-    total_updated = 0
-    
-    start_time = time.time()
-
-    async def process_batch(batch):
-        try:
-            result = await eval(collection).bulk_write(batch, ordered=False)
-            return result.upserted_count + result.modified_count
-        except BulkWriteError as bwe:
-            print(f"Bulk write error: {bwe.details}")
-            return bwe.details['nUpserted'] + bwe.details['nModified']
-
-    tasks = [
-        process_batch(bulk_operations[i:i+batch_size])
-        for i in range(0, total_operations, batch_size)
-    ]
-
-    results = await asyncio.gather(*tasks)
-    total_updated = sum(results)
-    
-    end_time = time.time()
-    print(f'{user_email} 사용자의 {collection} Data Bulk write 걸린 시간 --> {end_time - start_time}')
-    print(f'{user_email} 사용자의 {collection} Update Db 전체 걸린 시간 --> {end_time - start_doc}')
-    
-    #return total_updated
 
 async def update_db_div(user_email, df, collection):
     if len(df) == 0:
@@ -499,7 +438,7 @@ async def bpm_hour_feature(user_email: str, start_date: str, end_date: str):
         'ds': [doc['timestamp'] for doc in query],
         'bpm': [doc['value'] for doc in query]
     })
-    print(f'----------In featureHour len bpm_df---------- {len(mongo_bpm_df)}')
+    print(f'----------In featureHour len bpm_df---------- {len(mongo_bpm_df)} ----- {datetime.fromtimestamp(int(start_date[:-3]))} --- {datetime.fromtimestamp(int(end_date[:-3]))}')
     if len(mongo_bpm_df) == 0:
         return 0
     mongo_bpm_df['ds'] = pd.to_datetime(mongo_bpm_df['ds'])
@@ -518,8 +457,8 @@ async def get_bpm_all_data(user_email, start_date):
     return results
 
 async def get_hrv_all_data(user_email):
-    cursor_rmssd = rmssd3.find({'user_email': user_email})
-    cursor_sdnn = sdnn3.find({'user_email': user_email})
+    cursor_rmssd = rmssd.find({'user_email': user_email})
+    cursor_sdnn = sdnn.find({'user_email': user_email})
     results_rmssd = await cursor_rmssd.to_list(length=None)
     results_sdnn = await cursor_sdnn.to_list(length=None)
 
@@ -553,7 +492,7 @@ async def bpm_day_feature(user_email: str):
     
     
     
-    rmssd_last_date = await rmssd3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    rmssd_last_date = await rmssd.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     bpm_last_date = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     
     print(rmssd_last_date)
