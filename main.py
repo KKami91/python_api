@@ -456,7 +456,7 @@ async def update_db_div(user_email, df, collection):
             ) for doc in documents
         ]
         
-    batch_size = 10000
+    batch_size = 1000
     
     total_operations = len(bulk_operations)
     
