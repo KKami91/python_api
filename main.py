@@ -109,6 +109,7 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     json_data = [new_query_div(user_email, record_names[x], exist_times[x]) for x in range(len(exist_times))]
     query_end_time = datetime.now()
     print(f'In Python ---> dynamoDB 데이터 query 걸린 시간 @@ : {query_end_time - query_start_time}')
+    print(f'{len(json_data[0])}, {len(json_data[1])}, {len(json_data[2])}, {len(json_data[3])}')
 
     # DataFrame 만드는데 걸린 시간 
     create_df_start_time = datetime.now()
@@ -117,7 +118,7 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     print(f'In Python ---> dynamoDB 데이터 데이터프레임 만드는데 걸린 시간 @@ : {create_df_end_time - create_df_start_time}')
     
     mongo_save_start_time = datetime.now()
-    await asyncio.gather(*[update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
+    await asyncio.gather(*[update_db(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
     mongo_save_end_time = datetime.now()
     print(f'In Python ---> MongoDB 저장 : {mongo_save_end_time - mongo_save_start_time} (2)')
     
@@ -365,6 +366,60 @@ def prepare_docs(user_email, df, data_type):
             }
             for row in df.to_dict('records')
         ]
+        
+async def update_db(user_email, df, collection):
+    if len(df) == 0:
+        return 0
+    
+    print(f'user_email : {user_email}, ,df[:3] : {df[:3]}, ,collection : {collection}')
+    start_doc = time.time()
+
+    documents = prepare_docs(user_email, df, collection)
+    
+    end_doc = time.time()
+    # print(documents)
+    print(f'{user_email} - {collection} prepare_docs 걸린 시간 : {end_doc - start_doc}')
+    
+    is_sleep_collection = collection.startswith('sleep_')
+    
+    bulk_operations = [
+        UpdateOne(
+            {
+                'user_email': doc['user_email'],
+                'timestamp_start' if is_sleep_collection else 'timestamp': doc['timestamp_start' if is_sleep_collection else 'timestamp'],
+            },
+            {'$set': doc},
+            upsert=True
+        ) for doc in documents
+    ]
+    
+    batch_size = 1000  # Reduced batch size for better performance
+    total_operations = len(bulk_operations)
+    total_updated = 0
+    
+    start_time = time.time()
+
+    async def process_batch(batch):
+        try:
+            result = await eval(collection).bulk_write(batch, ordered=False)
+            return result.upserted_count + result.modified_count
+        except BulkWriteError as bwe:
+            print(f"Bulk write error: {bwe.details}")
+            return bwe.details['nUpserted'] + bwe.details['nModified']
+
+    tasks = [
+        process_batch(bulk_operations[i:i+batch_size])
+        for i in range(0, total_operations, batch_size)
+    ]
+
+    results = await asyncio.gather(*tasks)
+    total_updated = sum(results)
+    
+    end_time = time.time()
+    print(f'{user_email} 사용자의 {collection} Data Bulk write 걸린 시간 --> {end_time - start_time}')
+    print(f'{user_email} 사용자의 {collection} Update Db 전체 걸린 시간 --> {end_time - start_doc}')
+    
+    #return total_updated
 
 async def update_db_div(user_email, df, collection):
     if len(df) == 0:
