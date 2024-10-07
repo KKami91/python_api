@@ -228,11 +228,13 @@ async def exist_collection_div(user_email, collections):
         if idx not in collection_list_name:
             await db.create_collection(idx)
             if idx == 'sleep_test3':
-                await db[idx].create_index([('user_email', ASCENDING)])
-                await db[idx].create_index([('timestamp_start', ASCENDING)])
+                #await db[idx].create_index([('user_email', ASCENDING)])
+                #await db[idx].create_index([('timestamp_start', ASCENDING)])
+                await db[idx].create_index([('user_email', ASCENDING), ('timestamp_start', ASCENDING)])
             else:
-                await db[idx].create_index([('user_email', ASCENDING)])
-                await db[idx].create_index([('timestamp', ASCENDING)])
+                #await db[idx].create_index([('user_email', ASCENDING)])
+                #await db[idx].create_index([('timestamp', ASCENDING)])
+                await db[idx].create_index([('user_email', ASCENDING), ('timestamp', ASCENDING)])
             res_idx.append('0000-00-00T00:00:00')
         else:
             collection = db[idx]
@@ -392,7 +394,7 @@ async def update_db(user_email, df, collection):
         ) for doc in documents
     ]
     
-    batch_size = 3000  # Reduced batch size for better performance
+    batch_size = 1000  # Reduced batch size for better performance
     total_operations = len(bulk_operations)
     total_updated = 0
     
