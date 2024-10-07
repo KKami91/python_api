@@ -117,8 +117,8 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     print(f'In Python ---> dynamoDB 데이터 데이터프레임 만드는데 걸린 시간 @@ : {create_df_end_time - create_df_start_time}')
     
     mongo_save_start_time = datetime.now()
-    await asyncio.gather(*[update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
-    #await asyncio.gather(*[update_db(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
+    #await asyncio.gather(*[update_db_div(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
+    await asyncio.gather(*[update_db(user_email, df_data[x], collection_names_div[x]) for x in range(len(df_data))])
     mongo_save_end_time = datetime.now()
     print(f'In Python ---> MongoDB 저장 : {mongo_save_end_time - mongo_save_start_time} (2)')
     
@@ -392,7 +392,7 @@ async def update_db(user_email, df, collection):
         ) for doc in documents
     ]
     
-    batch_size = 10000  # Reduced batch size for better performance
+    batch_size = 1000  # Reduced batch size for better performance
     total_operations = len(bulk_operations)
     total_updated = 0
     
@@ -456,7 +456,7 @@ async def update_db_div(user_email, df, collection):
             ) for doc in documents
         ]
         
-    batch_size = 1000
+    batch_size = 10000
     
     total_operations = len(bulk_operations)
     
