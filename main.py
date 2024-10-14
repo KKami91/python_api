@@ -472,7 +472,18 @@ async def update_db_div(user_email, df, collection):
     end_time = time.time()
     print(f'{user_email} 사용자의 {collection} Data 저장 걸린 시간 --> {end_time - start_doc}')
 
+async def start_date(user_email, collection_name):
+    if 'sleep' in collection_name:
+        res = await eval(collection_name).find_one({'user_email': user_email}, sort=[('timestamp_start', ASCENDING)])
+        return res['timestamp_start']
+    else:
+        res = await eval(collection_name).find_one({'user_email': user_email}, sort=[('timestamp', ASCENDING)])
+        return res['timestamp']
 
+@app.get("/get_start_dates/{user_email}")
+async def get_start_dates(user_email: str):
+    collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
+    return {"start_date": sorted([await start_date(user_email, collections[x]) for x in range(len(collections))])[0]}
     
 @app.get("/get_save_dates/{user_email}")
 async def get_save_dates(user_email: str):
