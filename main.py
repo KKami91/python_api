@@ -551,7 +551,7 @@ async def get_hrv_all_data(user_email):
 # Heatmap 수정본
 @app.get("/feature_day_div/{user_email}")
 async def bpm_day_feature(user_email: str):
-    # 추가적으로 BPM 데이터 업데이트 하는 부분도 필요.
+    # 추가적으로 BPM 데이터 업데이트 하는 부분도 필요.s
     update_bpm_ds = await exist_collection_div(user_email, ['bpm_test3'])
     # print(update_bpm_ds)
     update_bpm_data = new_query_div(user_email, 'HeartRate', update_bpm_ds[0])
