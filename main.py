@@ -7,9 +7,8 @@ import pandas as pd
 from prophet import Prophet
 import datetime
 from botocore.exceptions import ClientError
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dateutil import relativedelta
-from datetime import timedelta
 from typing import Optional
 from dotenv import load_dotenv
 from pymongo import MongoClient, DESCENDING, UpdateOne, ASCENDING
@@ -21,6 +20,7 @@ import neurokit2 as nk
 import time
 from motor.motor_asyncio import AsyncIOMotorClient
 import asyncio
+from dateutil.parser import parse
 
 
 
@@ -79,13 +79,38 @@ sleep_test2 = db.sleep_test2
 rmssd = db.rmssd
 sdnn = db.sdnn
 
+rmssd_test = db.rmssd_test
+sdnn_test = db.sdnn_test
 
 bpm_test3 = db.bpm_test3
 step_test3 = db.step_test3
 calorie_test3 = db.calorie_test3
 sleep_test3 = db.sleep_test3
-rmssd3 = db.rmssd3
-sdnn3 = db.sdnn3
+
+bpm = db.bpm
+step = db.step
+calorie = db.calorie
+sleep = db.sleep
+
+bpm5 = db.bpm5
+step5 = db.step5
+calorie5 = db.calorie5
+sleep5 = db.sleep5
+rmssd5 = db.rmssd5
+sdnn5 = db.sdnn5
+
+rmssdt = db.rmssdt
+sdnnt = db.sdnnt
+
+
+# ##### 한국 시간 변환 #####
+# def utc_to_kst(utc_time):
+#     kst = pytz.timezone('Asia/Seoul')
+#     if isinstance(utc_time, datetime):
+#         return utc_time.replace(tzinfo=pytz.utc).astimezone(kst)
+#     else:
+#         utc_dt = datetime.strptime(utc_time, "%Y-%m-%d %H:%M:%S")
+#         return utc_dt.replace(tzinfo=pytz.utc).astimezone(kst)
 
 ########## dynamodb process time check ##########
 @app.post("/check_db3_dynamodb")
@@ -96,7 +121,9 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     
     user_email = request.user_email
     record_names = ['HeartRate', 'Steps', 'TotalCaloriesBurned', 'SleepSession']
-    collection_names_div = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
+    #collection_names_div = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
+    collection_names_div = ['bpm', 'step', 'calorie', 'sleep']
+    
 
     # MongoDB 컬렉션에 데이터가 존재하는지 걸린 시간 -> exist_items_end_time - exist_items_start_time
     exist_items_start_time = datetime.now()
@@ -104,6 +131,7 @@ async def check_db_query_div_dynamodb(request: UserEmailRequest):
     exist_items_end_time = datetime.now()
     print(f'In Python ---> MongoDB 컬렉션 데이터 존재 유무 체크 걸린 시간 @@ : {exist_items_end_time - exist_items_start_time}')
     
+    print(exist_times)
     # DynamoDB 데이터 query 걸린 시간 
     query_start_time = datetime.now()
     json_data = [new_query_div(user_email, record_names[x], exist_times[x]) for x in range(len(exist_times))]
@@ -162,11 +190,13 @@ def save_hrv(user_email, hrv_df):
     
     for i in range(0, rmssd_total_operations, batch_size):
         batch = rmssd_bulk_operations[i:i+batch_size]
-        rmssd.bulk_write(batch, ordered=False)
+        #rmssd_test.bulk_write(batch, ordered=False)
+        rmssdt.bulk_write(batch, ordered=False)
 
     for i in range(0, sdnn_total_operations, batch_size):
         batch = sdnn_bulk_operations[i:i+batch_size]
-        sdnn.bulk_write(batch, ordered=False)
+        # sdnn_test.bulk_write(batch, ordered=False)
+        sdnnt.bulk_write(batch, ordered=False)
         
     save_hrv_end_time = datetime.now()
     print(f'{user_email} --- save_hrv 걸린 시간 : {save_hrv_end_time - save_hrv_start_time} ---> 총 길이, {len(rmssd_df)}')
@@ -227,7 +257,9 @@ async def exist_collection_div(user_email, collections):
     for idx in collections:
         if idx not in collection_list_name:
             await db.create_collection(idx)
-            if idx == 'sleep_test3':
+            #if idx == 'sleep_test3':
+            # if idx == 'sleep':
+            if idx == 'sleep':
                 await db[idx].create_index([('user_email', ASCENDING)])
                 await db[idx].create_index([('timestamp_start', ASCENDING)])
             else:
@@ -236,7 +268,9 @@ async def exist_collection_div(user_email, collections):
             res_idx.append('0000-00-00T00:00:00')
         else:
             collection = db[idx]
-            if idx == 'sleep_test3':
+            #if idx == 'sleep_test3':
+            #if idx == 'sleep':
+            if idx == 'sleep':
                 doc = await collection.find_one({'user_email': user_email}, sort=[('timestamp_start', DESCENDING)])
             else:
                 doc = await collection.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
@@ -244,11 +278,14 @@ async def exist_collection_div(user_email, collections):
             if doc is None:
                 res_idx.append('0000-00-00T00:00:00')
             else:
-                if idx == 'sleep_test3':
+                # if idx == 'sleep':
+                if idx == 'sleep':
+                #if idx == 'sleep_test3':
                     print('-------', idx, '------')
                     res_idx.append(str(doc['timestamp_end']))
                 else:
                     res_idx.append(str(doc['timestamp']))
+        print('#@@#@#$@#$@#$@# ',res_idx)
     return res_idx
 
 def new_query_div(user_email, record_name, start_time):
@@ -261,19 +298,22 @@ def new_query_div(user_email, record_name, start_time):
     print(f'in new_query_div start_time : {start_time}')
     print(f'in new_query_div record_name : {record_name}')
     
-    if record_name == 'Steps':
+    if record_name == 'Step':
+    #if record_name == 'Steps':   
         start_time = start_time.replace(' ', 'T')
     else:
         if str(start_time)[:4] == '0000':
             start_time = start_time
         else:
             if record_name == 'HeartRate' or record_name == 'TotalCaloriesBurned':
-                print(f'여기로 들어와야 함.')
-                start_time = str(pd.to_datetime(start_time) - timedelta(hours=9) + timedelta(minutes=1)).replace(' ', 'T')
-                print(f'내부 start_time : {start_time}')
+                #print(f'여기로 들어와야 함.')
+                #start_time = str(pd.to_datetime(start_time) - timedelta(hours=9) + timedelta(minutes=1)).replace(' ', 'T')
+                start_time = str(pd.to_datetime(start_time) + timedelta(minutes=1)).replace(' ', 'T')
+                #print(f'내부 start_time : {start_time}')
             else:
-                print(f'여긴 안돼')
-                start_time = str(pd.to_datetime(start_time) - timedelta(hours=9)).replace(' ', 'T')
+                #print(f'여긴 안돼')
+                #start_time = str(pd.to_datetime(start_time) - timedelta(hours=9)).replace(' ', 'T')
+                start_time = str(pd.to_datetime(start_time)).replace(' ', 'T')
     try:
         while True:
             query_params = {
@@ -283,6 +323,7 @@ def new_query_div(user_email, record_name, start_time):
                     ':pk': {'S': f'U#{user_email}'},
                     ':start_sk': {'S': f'{record_name}Record#{start_time}'},
                     ':end_sk': {'S': f'{record_name}Record#9999-12-31T23:59:59Z'},
+                    #':end_sk': {'S': f'{record_name}Record#2024-05-18T23:59:59Z'},
                 },
             }
             
@@ -303,86 +344,177 @@ def new_query_div(user_email, record_name, start_time):
     except ClientError as e:
         print({e.response['Error']['Message']})
         return None
+    
+def convert_to_utc(dt_str: str) -> pd.Timestamp:
+    """+09:00 시간대가 포함된 문자열을 UTC로 변환."""
+    local_time = parse(dt_str)
+    return local_time.astimezone(timezone.utc)
 
 def create_df_div(query_json):
     if len(query_json) == 0:
         return []
     
+    
+    
+    # if 'HeartRate' in query_json[0]['SK']['S']:
+    #     return pd.DataFrame({
+    #         #'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+    #         'ds': pd.to_datetime([convert_to_utc(query_json[x]['recordInfo']['M']['startTime']['S']) for x in range(len(query_json))]),
+    #         'bpm': [int(query_json[x]['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N']) for x in range(len(query_json))]
+    #     })
+        
+    # if 'Steps' in query_json[0]['SK']['S']:
+    #     return pd.DataFrame({
+    #         #'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+    #         'ds': pd.to_datetime([convert_to_utc(query_json[x]['recordInfo']['M']['startTime']['S']) for x in range(len(query_json))]),
+    #         'step': [int(query_json[x]['recordInfo']['M']['count']['N']) for x in range(len(query_json))],
+    #     })
+        
+    # if 'TotalCaloriesBurned' in query_json[0]['SK']['S']:
+    #     return pd.DataFrame({
+    #         #'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+    #         'ds': pd.to_datetime([convert_to_utc(query_json[x]['recordInfo']['M']['startTime']['S']) for x in range(len(query_json))]),
+    #         'calorie': [np.round(float(query_json[x]['recordInfo']['M']['energy']['M']['value']['N']), 3) for x in range(len(query_json))],
+    #     })
+    
+    # if 'SleepSession' in query_json[0]['SK']['S']:
+    #     return pd.DataFrame({
+    #         #'ds_start': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+    #         'ds_start': pd.to_datetime([convert_to_utc(query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S']) for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+    #         #'ds_end': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+    #         'ds_end': pd.to_datetime([convert_to_utc(query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S']) for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+    #         'sleep': [int(query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))],
+    #     })
+    
     if 'HeartRate' in query_json[0]['SK']['S']:
         return pd.DataFrame({
-            'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+            #'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+            'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'] for x in range(len(query_json))]),
             'bpm': [int(query_json[x]['recordInfo']['M']['samples']['L'][0]['M']['beatsPerMinute']['N']) for x in range(len(query_json))]
         })
         
     if 'Steps' in query_json[0]['SK']['S']:
         return pd.DataFrame({
-            'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+            #'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+            'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'] for x in range(len(query_json))]),
             'step': [int(query_json[x]['recordInfo']['M']['count']['N']) for x in range(len(query_json))],
         })
         
     if 'TotalCaloriesBurned' in query_json[0]['SK']['S']:
         return pd.DataFrame({
-            'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+            #'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json))]),
+            'ds': pd.to_datetime([query_json[x]['recordInfo']['M']['startTime']['S'] for x in range(len(query_json))]),
             'calorie': [np.round(float(query_json[x]['recordInfo']['M']['energy']['M']['value']['N']), 3) for x in range(len(query_json))],
         })
     
     if 'SleepSession' in query_json[0]['SK']['S']:
         return pd.DataFrame({
-            'ds_start': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
-            'ds_end': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+            #'ds_start': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+            'ds_start': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['startTime']['S'] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+            #'ds_end': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'].replace('T', ' ')[:19] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
+            'ds_end': pd.to_datetime([query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['endTime']['S'] for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))]),
             'sleep': [int(query_json[x]['recordInfo']['M']['stages']['L'][y]['M']['stage']['N']) for x in range(len(query_json)) for y in range(len(query_json[x]['recordInfo']['M']['stages']['L']))],
         })
     
 def prepare_docs(user_email, df, data_type):
-    if data_type[:data_type.find('_')] == 'calorie':
-        print('is in calorie Data ----- : ', df, len(df))
+    #if data_type[:data_type.find('_')] == 'calorie':
+    #if data_type == 'calorie':
+    print('....', df[:5])
+    print('....', data_type)
+    
+    print(data_type)
+    
+    if data_type == 'calorie':
+        #print('is in calorie Data ----- : ', df, len(df))
         return [
             {
                 'user_email': user_email,
-                'type': data_type[:data_type.find('_')],
-                'value': float(row[data_type[:data_type.find('_')]]),
+                'type': data_type,
+                'value': float(row[data_type]),
                 'timestamp': row['ds'],
             }
             for row in df.to_dict('records')
         ]
+        # return [
+        #     {
+        #         'user_email': user_email,
+        #         'type': data_type[:data_type.find('_')],
+        #         'value': float(row[data_type[:data_type.find('_')]]),
+        #         'timestamp': row['ds'],
+        #     }
+        #     for row in df.to_dict('records')
+        # ]
         
-    elif data_type[:data_type.find('_')] == 'sleep':
+    #elif data_type[:data_type.find('_')] == 'sleep':
+    #elif data_type == 'sleep':
+    elif data_type == 'sleep':
         return [
             {
                 'user_email': user_email,
-                'type': data_type[:data_type.find('_')],
-                'value': int(row[data_type[:data_type.find('_')]]),
+                'type': data_type,
+                'value': int(row[data_type]),
                 'timestamp_start': row['ds_start'],
                 'timestamp_end': row['ds_end'],
             }
             for row in df.to_dict('records')
         ]
+        # return [
+        #     {
+        #         'user_email': user_email,
+        #         'type': data_type[:data_type.find('_')],
+        #         'value': int(row[data_type[:data_type.find('_')]]),
+        #         'timestamp_start': row['ds_start'],
+        #         'timestamp_end': row['ds_end'],
+        #     }
+        #     for row in df.to_dict('records')
+        # ]
         
     else: 
+        
         return [
             {
                 'user_email': user_email,
-                'type': data_type[:data_type.find('_')],
-                'value': int(row[data_type[:data_type.find('_')]]),
+                'type': data_type,
+                'value': int(row[data_type]),
                 'timestamp': row['ds']
             }
             for row in df.to_dict('records')
         ]
+        # return [
+        #     {
+        #         'user_email': user_email,
+        #         'type': data_type[:data_type.find('_')],
+        #         'value': int(row[data_type[:data_type.find('_')]]),
+        #         'timestamp': row['ds']
+        #     }
+        #     for row in df.to_dict('records')
+        # ]
         
 async def update_db(user_email, df, collection):
     if len(df) == 0:
         return 0
     
-    print(f'user_email : {user_email}, ,df[:3] : {df[:3]}, ,collection : {collection}')
+    print('*'*50)
+    print(f'user_email : {user_email}, ,df[:5] : {df[:5]}, ,collection : {collection}')
+    if collection == 'bpm':
+        print('timestamp type : ', type(df[:1]['ds'][0]), '----', df[:1]['ds'][0])
+    print('*'*50)
     start_doc = time.time()
 
     documents = prepare_docs(user_email, df, collection)
+    
+    print('#'*50)
+    print(documents[:5])
+    if collection == 'bpm':
+        print('timestamp type :', type(documents[0]['timestamp']), '----', documents[0]['timestamp'])
+    print('#'*50)
     
     end_doc = time.time()
     # print(documents)
     print(f'{user_email} - {collection} prepare_docs 걸린 시간 : {end_doc - start_doc}')
     
-    is_sleep_collection = collection.startswith('sleep_')
+    #is_sleep_collection = collection.startswith('sleep_')
+    is_sleep_collection = collection.startswith('sleep')
     
     bulk_operations = [
         UpdateOne(
@@ -394,6 +526,10 @@ async def update_db(user_email, df, collection):
             upsert=True
         ) for doc in documents
     ]
+    
+    print('^'*50)
+    print(bulk_operations[:5])
+    print('^'*50)
     
     batch_size = 1000  # Reduced batch size for better performance
     total_operations = len(bulk_operations)
@@ -482,21 +618,29 @@ async def start_date(user_email, collection_name):
 
 @app.get("/get_start_dates/{user_email}")
 async def get_start_dates(user_email: str):
-    collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
+    #collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
+    collections = ['bpm', 'step', 'calorie', 'sleep']
+    
     return {"start_date": sorted([await start_date(user_email, collections[x]) for x in range(len(collections))])[0]}
     
 @app.get("/get_save_dates/{user_email}")
 async def get_save_dates(user_email: str):
-    collections = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
+    #collections = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
+    collections = ['bpm', 'step', 'calorie', 'sleep']
+    
     return {"save_dates": [max(exist_collection_div(user_email, collections))]}
 
 @app.get("/get_save_dates_div/{user_email}")
 async def get_save_dates_div(user_email: str):
-    collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
+    #collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
+    collections = ['bpm', 'step', 'calorie', 'sleep']
+    
     return {"save_dates": [max(await exist_collection_div(user_email, collections))]}
 
 async def get_bpm_hour_data(user_email, start_date, end_date):
-    cursor = bpm_test3.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(str(start_date)[:-3])), '$lte': datetime.fromtimestamp(int(str(end_date)[:-3]))}})
+    #cursor = bpm_test3.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(str(start_date)[:-3])), '$lte': datetime.fromtimestamp(int(str(end_date)[:-3]))}})
+    #cursor = bpm.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(str(start_date)[:-3])), '$lte': datetime.fromtimestamp(int(str(end_date)[:-3]))}})
+    cursor = bpm.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(str(start_date)[:-3])), '$lte': datetime.fromtimestamp(int(str(end_date)[:-3]))}})
     results = []
     async for document in cursor:
         results.append(document)
@@ -518,18 +662,24 @@ async def bpm_hour_feature(user_email: str, start_date: str, end_date: str):
     hour_group = mongo_bpm_df.groupby(mongo_bpm_df['ds'].dt.floor('h'))
     hour_hrv = hour_group.apply(calc_hrv).reset_index()
     
+    hour_hrv['ds'] = hour_hrv['ds'].dt.tz_localize('UTC')
+    
     hour_hrv.rename(columns={'rmssd' : 'hour_rmssd', 'sdnn' : 'hour_sdnn'}, inplace=True)
     
     return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
 
 async def get_bpm_all_data(user_email, start_date):
-    cursor = bpm_test3.find({'user_email': user_email, 'timestamp': {'$gte': start_date}})
+    #cursor = bpm_test3.find({'user_email': user_email, 'timestamp': {'$gte': start_date}})
+    #cursor = bpm.find({'user_email': user_email, 'timestamp': {'$gte': start_date}})
+    cursor = bpm.find({'user_email': user_email, 'timestamp': {'$gte': start_date}})
     results = await cursor.to_list(length=None)
     return results
 
 async def get_hrv_all_data(user_email):
-    cursor_rmssd = rmssd.find({'user_email': user_email})
-    cursor_sdnn = sdnn.find({'user_email': user_email})
+    # cursor_rmssd = rmssd_test.find({'user_email': user_email})
+    # cursor_sdnn = sdnn_test.find({'user_email': user_email})
+    cursor_rmssd = rmssdt.find({'user_email': user_email})
+    cursor_sdnn = sdnnt.find({'user_email': user_email})
     results_rmssd = await cursor_rmssd.to_list(length=None)
     results_sdnn = await cursor_sdnn.to_list(length=None)
 
@@ -551,20 +701,26 @@ async def get_hrv_all_data(user_email):
 # Heatmap 수정본
 @app.get("/feature_day_div/{user_email}")
 async def bpm_day_feature(user_email: str):
-    # 추가적으로 BPM 데이터 업데이트 하는 부분도 필요.s
-    update_bpm_ds = await exist_collection_div(user_email, ['bpm_test3'])
+    # 추가적으로 BPM 데이터 업데이트 하는 부분도 필요.
+    #update_bpm_ds = await exist_collection_div(user_email, ['bpm_test3'])
+    update_bpm_ds = await exist_collection_div(user_email, ['bpm'])
     # print(update_bpm_ds)
+    print('in feature day div -- ; ', update_bpm_ds)
     update_bpm_data = new_query_div(user_email, 'HeartRate', update_bpm_ds[0])
     # print(update_bpm_data)
     if len(update_bpm_data) > 0:
         update_df = create_df_div(update_bpm_data)
-        await update_db_div(user_email, update_df, 'bpm_test3')
+        #await update_db_div(user_email, update_df, 'bpm_test3')
+        await update_db_div(user_email, update_df, 'bpm')
         # update_db_div(user_email, update_df, bpm_test2)
     
     
     
-    rmssd_last_date = await rmssd.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
-    bpm_last_date = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    # rmssd_last_date = await rmssd_test.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    rmssd_last_date = await rmssdt.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    #bpm_last_date = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    # bpm_last_date = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    bpm_last_date = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     
     print(rmssd_last_date)
     
@@ -572,13 +728,20 @@ async def bpm_day_feature(user_email: str):
         rmssd_last_date = {'timestamp': datetime(1,1,1)}
     # 업데이트 된 데이터가 있다면, HRV Data 마지막 timestamp <-> BPM 데이터 마지막 timestamp 비교
     if bpm_last_date['timestamp'] - rmssd_last_date['timestamp'] > timedelta(days=1):
-        update_rmssd_query = await bpm_test3.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
+        #update_rmssd_query = await bpm_test3.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
+        # update_rmssd_query = await bpm.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
+        update_rmssd_query = await bpm.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
         update_rmssd_df = pd.DataFrame({
-                'ds': pd.to_datetime([update_rmssd_query[x]['timestamp'] for x in range(len(update_rmssd_query))]),
+                'ds': pd.to_datetime([update_rmssd_query[x]['timestamp'] + timedelta(hours=9) for x in range(len(update_rmssd_query))]),
                 'bpm': [int(update_rmssd_query[x]['value']) for x in range(len(update_rmssd_query))]
             })
+        
+        print('updatermssd_df',update_rmssd_df[:5])
+        print('updatermssd_df',update_rmssd_df[-5:])
         day_group = update_rmssd_df.groupby(update_rmssd_df['ds'].dt.floor('d'))
         day_hrv = day_group.apply(calc_hrv).reset_index()
+        
+        day_hrv['ds'] = day_hrv['ds'].dt.tz_localize('UTC')
 
         day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
         
@@ -597,12 +760,15 @@ async def bpm_minute_predict(user_email: str):
 
     start_time = datetime.now()
     
-    last_bpm_data = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    #last_bpm_data = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    # last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=15))
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
         'bpm': [doc['value'] for doc in query]
     })
+    mongo_bpm_df = mongo_bpm_df[mongo_bpm_df['ds'].dt.second == 0]
     mongo_bpm_df.rename(columns={'bpm': 'y'}, inplace=True)
     min_model = Prophet(
         changepoint_prior_scale=0.0001,
@@ -621,6 +787,15 @@ async def bpm_minute_predict(user_email: str):
     
     end_time = datetime.now()
     print(f'in predict_minute_div 걸린 시간 : {end_time - start_time} --- {len(mongo_bpm_df)}')
+    
+    
+    print('before tz_localize UTC')
+    print(min_forecast[:5])
+    print('before tz_localize UTC')
+    min_forecast['ds'] = min_forecast['ds'].dt.tz_localize('UTC')
+    print('after tz_localize UTC')
+    print(min_forecast[:5])
+    print('after tz_localize UTC')
 
     return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
        
@@ -628,14 +803,18 @@ async def bpm_minute_predict(user_email: str):
 async def bpm_hour_predict(user_email: str):
 
     start_time = datetime.now()
-    last_bpm_data = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    #last_bpm_data = await bpm_test3.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    # last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=30))
+    #print('in predict_hour_div query , , ', query)
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
         'bpm': [doc['value'] for doc in query]
     })
     mongo_bpm_df.rename(columns={'bpm': 'y'}, inplace=True)
     hour_df = mongo_bpm_df.groupby(mongo_bpm_df['ds'].dt.floor('h')).agg({'y':'mean'}).reset_index()
+    print('$$$$', hour_df[:5])
     hour_model = Prophet(
         changepoint_prior_scale=0.01,
         seasonality_mode='multiplicative',
@@ -652,7 +831,13 @@ async def bpm_hour_predict(user_email: str):
     
     end_time = datetime.now()
     print(f'in predict_hour_div 걸린 시간 : {end_time - start_time} ---- {len(hour_df)}')
+    
 
+    hour_forecast['ds'] = hour_forecast['ds'].dt.tz_localize('UTC')
+    print('after tz_localize UTC')
+    print(hour_forecast[:5])
+    print('after tz_localize UTC')
+    
     return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']][len(hour_forecast) - 72:].to_dict('records')}
 
 
