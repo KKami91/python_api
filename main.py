@@ -7,7 +7,7 @@ import pandas as pd
 from prophet import Prophet
 import datetime
 from botocore.exceptions import ClientError
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from dateutil import relativedelta
 from typing import Optional
 from dotenv import load_dotenv
@@ -21,6 +21,7 @@ import time
 from motor.motor_asyncio import AsyncIOMotorClient
 import asyncio
 from dateutil.parser import parse
+import pytz
 
 
 
@@ -732,17 +733,19 @@ async def bpm_day_feature(user_email: str):
         # update_rmssd_query = await bpm.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
         update_rmssd_query = await bpm.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
         update_rmssd_df = pd.DataFrame({
-                'ds': pd.to_datetime([update_rmssd_query[x]['timestamp'] + timedelta(hours=9) for x in range(len(update_rmssd_query))]),
+                'ds': pd.to_datetime([update_rmssd_query[x]['timestamp'] for x in range(len(update_rmssd_query))]),
                 'bpm': [int(update_rmssd_query[x]['value']) for x in range(len(update_rmssd_query))]
             })
         
-        print('updatermssd_df',update_rmssd_df[:5])
-        print('updatermssd_df',update_rmssd_df[-5:])
+        update_rmssd_df.sort_values(by='ds', ascending=True, inplace=True)
+        update_rmssd_df.reset_index(inplace=True, drop=True)
+        update_rmssd_df['ds'] = update_rmssd_df['ds'].dt.tz_localize('UTC').dt.tz_convert('Asia/Seoul')
+        
         day_group = update_rmssd_df.groupby(update_rmssd_df['ds'].dt.floor('d'))
         day_hrv = day_group.apply(calc_hrv).reset_index()
         
-        day_hrv['ds'] = day_hrv['ds'].dt.tz_localize('UTC')
-
+        day_hrv['ds'] = day_hrv['ds'].dt.tz_localize(None)
+        
         day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
         
         save_hrv(user_email, day_hrv)
@@ -844,4 +847,3 @@ async def bpm_hour_predict(user_email: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
-    
