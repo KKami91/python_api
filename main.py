@@ -639,7 +639,7 @@ async def bpm_day_feature(user_email: str):
         
         day_hrv.rename(columns={'rmssd' : 'day_rmssd', 'sdnn' : 'day_sdnn'}, inplace=True)
         
-        print()
+        
         
         save_hrv(user_email, day_hrv)
 
