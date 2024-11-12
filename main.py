@@ -605,7 +605,7 @@ async def bpm_day_feature(user_email: str):
     update_bpm_ds = await exist_collection_div(user_email, ['bpm'])
 
     update_bpm_data = new_query_div(user_email, 'HeartRate', update_bpm_ds[0])
-    # print(update_bpm_data)
+    # print(update_bpm_data)s
     if len(update_bpm_data) > 0:
         update_df = create_df_div(update_bpm_data)
 
