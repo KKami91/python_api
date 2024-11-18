@@ -103,6 +103,14 @@ sdnn5 = db.sdnn5
 rmssdt = db.rmssdt
 sdnnt = db.sdnnt
 
+@app.post("/user_data")
+async def get_user_data():
+    results = [dynamodb.scan(IndexName='email-timestamp-index', TableName=TABLE_NAME)][0]['Items']
+    return [{'user_email': results[x]['email']['S'], 
+             'user_name': results[x]['name']['S'], 
+             'user_gender': results[x]['gender']['S'],
+             'user_height': results[x]['height']['N'],
+             'user_weight': results[x]['weight']['N']} for x in range(len(results))]
 
 @app.post("/check_db3_dynamodb")
 async def check_db_query_div_dynamodb(request: UserEmailRequest):
