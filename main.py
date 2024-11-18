@@ -619,7 +619,7 @@ async def bpm_day_feature(user_email: str):
     
     if rmssd_last_date == None:
         rmssd_last_date = {'timestamp': datetime(1,1,1)}
-    # 업데이트 된 데이터가 있다면, HRV Data 마지막 timestamp <-> BPM 데이터 마지막 timestamp 비교
+    # 업데이트 된 데이터가 있다면, HRV Data 마지막 timestamp <-> BPM 데이터 마지막 timestamp 비교s
     if bpm_last_date['timestamp'] - rmssd_last_date['timestamp'] > timedelta(days=1):
   
         update_rmssd_query = await bpm.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
