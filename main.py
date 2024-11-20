@@ -640,7 +640,7 @@ async def get_hour_hrv_data(user_email, start_date, end_date):
         'hour_rmssd': [doc['value'] for doc in results_rmssd],
         'hour_sdnn': [doc['value'] for doc in results_sdnn]
     })
-    
+    results['ds'] = pd.to_datetime(results['ds'])
     results['ds'] = results['ds'].dt.tz_localize('UTC')
     
     print('result : ', results)
@@ -677,6 +677,7 @@ async def bpm_hour_feature2(user_email: str, start_date: str, end_date: str):
     print('in feature hour end_date: ', end_date)
     print('in feature hour types: ', type(start_date), type(end_date))
     hour_hrv = await get_hour_hrv_data(user_email, start_date, end_date)
+    
     return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
 
 @app.get("/feature_day_div2/{user_email}")
@@ -817,6 +818,4 @@ async def bpm_hour_predict(user_email: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
-    
-
     
