@@ -71,6 +71,17 @@ sleep_div = db.sleep_div
 #############################################################
 #############################################################
 
+################ 데이터 각각 나눈 버전 ###############
+bpm_div = db.bpm_div
+step_div = db.step_div
+calorie_div = db.calorie_div
+sleep_div = db.sleep_div
+
+
+
+#############################################################
+#############################################################
+
 ################ 데이터 저장 테스트 ##################
 bpm_test2 = db.bpm_test2
 step_test2 = db.step_test2
@@ -103,6 +114,19 @@ sdnn5 = db.sdnn5
 rmssdt = db.rmssdt
 sdnnt = db.sdnnt
 
+####################### 저장 방식 변경 ###################
+bpm2 = db.bpm2
+step2 = db.step2
+calorie2 = db.calorie2
+sleep2 = db.sleep2
+
+hour_rmssd2 = db.hour_rmssd2
+hour_sdnn2 = db.hour_sdnn2
+
+day_rmssd2 = db.day_rmssd2
+day_sdnn2 = db.day_sdnn2
+#########################################################
+
 @app.post("/user_data")
 async def get_user_data():
     results = [dynamodb.scan(IndexName='email-timestamp-index', TableName=TABLE_NAME)][0]['Items']
@@ -114,7 +138,7 @@ async def get_user_data():
 
 @app.post("/check_db3_dynamodb")
 async def check_db_query_div_dynamodb(request: UserEmailRequest):
-    
+    print('check_db ;;;')
     # 전체 check DB 걸린 시간 -> all_end_time - all_start_time
     all_start_time = datetime.now()
     
@@ -272,12 +296,8 @@ def new_query_div(user_email, record_name, start_time):
     new_items = []
     start_time = start_time
     last_evaluated_key = None
-    
-    print(f'in new_query_div start_time : {start_time}')
-    print(f'in new_query_div record_name : {record_name}')
-    
-    if record_name == 'Step':
-    #if record_name == 'Steps':   
+
+    if record_name == 'Step': 
         start_time = start_time.replace(' ', 'T')
     else:
         if str(start_time)[:4] == '0000':
@@ -299,7 +319,6 @@ def new_query_div(user_email, record_name, start_time):
                     ':pk': {'S': f'U#{user_email}'},
                     ':start_sk': {'S': f'{record_name}Record#{start_time}'},
                     ':end_sk': {'S': f'{record_name}Record#9999-12-31T23:59:59Z'},
-                    #':end_sk': {'S': f'{record_name}Record#2024-05-18T23:59:59Z'},
                 },
             }
             
@@ -528,7 +547,7 @@ async def start_date(user_email, collection_name):
 @app.get("/get_start_dates/{user_email}")
 async def get_start_dates(user_email: str):
     #collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
-    collections = ['bpm', 'step', 'calorie', 'sleep']
+    collections = ['bpm2', 'step2', 'calorie2', 'sleep2']
     
     print('----?')
     
@@ -537,14 +556,15 @@ async def get_start_dates(user_email: str):
 @app.get("/get_save_dates/{user_email}")
 async def get_save_dates(user_email: str):
     #collections = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
-    collections = ['bpm', 'step', 'calorie', 'sleep']
+    collections = ['bpm2', 'step2', 'calorie2', 'sleep2']
     
     return {"save_dates": [max(exist_collection_div(user_email, collections))]}
 
 @app.get("/get_save_dates_div/{user_email}")
 async def get_save_dates_div(user_email: str):
     #collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
-    collections = ['bpm', 'step', 'calorie', 'sleep']
+    #collections = ['bpm', 'step', 'calorie', 'sleep']
+    collections = ['bpm2', 'step2', 'calorie2', 'sleep2']
     
     return {"save_dates": [max(await exist_collection_div(user_email, collections))]}
 
@@ -606,14 +626,76 @@ async def get_hrv_all_data(user_email):
     
     return df_merged
 
+
+########################## 저장 방식 변경에 의한 구조 변경 ###########################
+async def get_hour_hrv_data(user_email, start_date, end_date):
+    cursor_rmssd = hour_rmssd2.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
+    results_rmssd = await cursor_rmssd.to_list(length=None)
+    
+    cursor_sdnn = hour_sdnn2.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
+    results_sdnn = await cursor_sdnn.to_list(length=None)
+    
+    results = pd.DataFrame({
+        'ds': [doc['timestamp'] for doc in results_rmssd],
+        'hour_rmssd': [doc['value'] for doc in results_rmssd],
+        'hour_sdnn': [doc['value'] for doc in results_sdnn]
+    })
+    
+    results['ds'] = results['ds'].dt.tz_localize('UTC')
+    
+    print('result : ', results)
+    
+    return results
+
+async def get_day_hrv_data(user_email):
+
+    cursor_rmssd = day_rmssd2.find({'user_email': user_email})
+    cursor_sdnn = day_sdnn2.find({'user_email': user_email})
+    results_rmssd = await cursor_rmssd.to_list(length=None)
+    results_sdnn = await cursor_sdnn.to_list(length=None)
+
+    df_rmssd = pd.DataFrame({
+        'ds': [doc['timestamp'] for doc in results_rmssd],
+        'day_rmssd': [doc['value'] for doc in results_rmssd]
+    })
+    df_sdnn = pd.DataFrame({
+        'ds': [doc['timestamp'] for doc in results_sdnn],
+        'day_sdnn': [doc['value'] for doc in results_sdnn]
+    })
+
+    df_merged = pd.merge(df_rmssd, df_sdnn, on='ds', how='outer')
+
+    df_merged = df_merged.sort_values('ds').reset_index(drop=True)
+    
+    return df_merged
+
+
+@app.get("/feature_hour_div2/{user_email}/{start_date}/{end_date}")
+async def bpm_hour_feature2(user_email: str, start_date: str, end_date: str):
+    #print(f'{user_email} 들어옴, {datetime.fromtimestamp(int(start_date[:-3]))} ~ {datetime.fromtimestamp(int(end_date[-2]))}')
+    print('in feature hour start_date: ', start_date)
+    print('in feature hour end_date: ', end_date)
+    print('in feature hour types: ', type(start_date), type(end_date))
+    hour_hrv = await get_hour_hrv_data(user_email, start_date, end_date)
+    return {'hour_hrv': hour_hrv[['ds', 'hour_rmssd', 'hour_sdnn']].to_dict('records')}
+
+@app.get("/feature_day_div2/{user_email}")
+async def bpm_day_feature2(user_email: str):
+    day_hrv = await get_day_hrv_data(user_email)
+    return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
+########################################################################
+
+
 # Heatmap 수정본
 @app.get("/feature_day_div/{user_email}")
 async def bpm_day_feature(user_email: str):
 
+    print('@@@@@@@@@@@@@@@@@@@@@@@ IN FEATURE DAY DIV @@@@@@@@@@@@@@@@@@@@@@@@@@')
+
     update_bpm_ds = await exist_collection_div(user_email, ['bpm'])
 
     update_bpm_data = new_query_div(user_email, 'HeartRate', update_bpm_ds[0])
-    # print(update_bpm_data)s
+    # print(update_bpm_data)
     if len(update_bpm_data) > 0:
         update_df = create_df_div(update_bpm_data)
 
@@ -627,7 +709,7 @@ async def bpm_day_feature(user_email: str):
     
     if rmssd_last_date == None:
         rmssd_last_date = {'timestamp': datetime(1,1,1)}
-    # 업데이트 된 데이터가 있다면, HRV Data 마지막 timestamp <-> BPM 데이터 마지막 timestamp 비교s
+    # 업데이트 된 데이터가 있다면, HRV Data 마지막 timestamp <-> BPM 데이터 마지막 timestamp 비교
     if bpm_last_date['timestamp'] - rmssd_last_date['timestamp'] > timedelta(days=1):
   
         update_rmssd_query = await bpm.find({'user_email': user_email, 'timestamp': {'$gte': rmssd_last_date['timestamp'], '$lte': bpm_last_date['timestamp']}}).to_list(length=None)
@@ -653,7 +735,7 @@ async def bpm_day_feature(user_email: str):
 
     day_hrv = await get_hrv_all_data(user_email)
 
-
+    print('@@@@@@@@@@@@@@@@@@@@@@@ OUT FEATURE DAY DIV @@@@@@@@@@@@@@@@@@@@@@@@@@')
     return {'day_hrv': day_hrv[['ds', 'day_rmssd', 'day_sdnn']].to_dict('records')}
 
 
@@ -661,7 +743,7 @@ async def bpm_day_feature(user_email: str):
 
 @app.get("/predict_minute_div/{user_email}")
 async def bpm_minute_predict(user_email: str):
-
+    print('&&&&&&&&&&&&&&&&&&&&&&&& IN PREDICT MINUTE DIV &&&&&&&&&&&&&&&&&&&&&&&&')
     start_time = datetime.now()
 
     last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
@@ -690,12 +772,12 @@ async def bpm_minute_predict(user_email: str):
     print(f'in predict_minute_div 걸린 시간 : {end_time - start_time} --- {len(mongo_bpm_df)}')
 
     min_forecast['ds'] = min_forecast['ds'].dt.tz_localize('UTC')
-
+    print('&&&&&&&&&&&&&&&&&&&&&&&& OUT PREDICT MINUTE DIV &&&&&&&&&&&&&&&&&&&&&&&&')
     return {'min_pred_bpm': min_forecast[['ds', 'min_pred_bpm']].to_dict('records')}
        
 @app.get("/predict_hour_div/{user_email}")
 async def bpm_hour_predict(user_email: str):
-
+    print('$$$$$$$$$$$$$$$$$$$$$$$$ IN PREDICT MINUTE DIV $$$$$$$$$$$$$$$$$$$$$$$$')
     start_time = datetime.now()
 
     last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
@@ -728,7 +810,7 @@ async def bpm_hour_predict(user_email: str):
 
     hour_forecast['ds'] = hour_forecast['ds'].dt.tz_localize('UTC')
 
-    
+    print('$$$$$$$$$$$$$$$$$$$$$$$$ OUT PREDICT MINUTE DIV $$$$$$$$$$$$$$$$$$$$$$$$')
     return {'hour_pred_bpm': hour_forecast[['ds', 'hour_pred_bpm']][len(hour_forecast) - 72:].to_dict('records')}
 
 
