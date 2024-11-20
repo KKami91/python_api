@@ -629,10 +629,10 @@ async def get_hrv_all_data(user_email):
 
 ########################## 저장 방식 변경에 의한 구조 변경 ###########################
 async def get_hour_hrv_data(user_email, start_date, end_date):
-    cursor_rmssd = hour_rmssd2.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
+    cursor_rmssd = hour_rmssd.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
     results_rmssd = await cursor_rmssd.to_list(length=None)
     
-    cursor_sdnn = hour_sdnn2.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
+    cursor_sdnn = hour_sdnn.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
     results_sdnn = await cursor_sdnn.to_list(length=None)
     
     results = pd.DataFrame({
@@ -649,8 +649,8 @@ async def get_hour_hrv_data(user_email, start_date, end_date):
 
 async def get_day_hrv_data(user_email):
 
-    cursor_rmssd = day_rmssd2.find({'user_email': user_email})
-    cursor_sdnn = day_sdnn2.find({'user_email': user_email})
+    cursor_rmssd = day_rmssd.find({'user_email': user_email})
+    cursor_sdnn = day_sdnn.find({'user_email': user_email})
     results_rmssd = await cursor_rmssd.to_list(length=None)
     results_sdnn = await cursor_sdnn.to_list(length=None)
 
