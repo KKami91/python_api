@@ -99,10 +99,10 @@ step_test3 = db.step_test3
 calorie_test3 = db.calorie_test3
 sleep_test3 = db.sleep_test3
 
-bpm = db.bpm
-step = db.step
-calorie = db.calorie
-sleep = db.sleep
+# bpm = db.bpm
+# step = db.step
+# calorie = db.calorie
+# sleep = db.sleep
 
 bpm5 = db.bpm5
 step5 = db.step5
@@ -115,16 +115,16 @@ rmssdt = db.rmssdt
 sdnnt = db.sdnnt
 
 ####################### 저장 방식 변경 ###################
-bpm2 = db.bpm2
-step2 = db.step2
-calorie2 = db.calorie2
-sleep2 = db.sleep2
+bpm = db.bpm
+step = db.step
+calorie = db.calorie
+sleep = db.sleep
 
-hour_rmssd2 = db.hour_rmssd2
-hour_sdnn2 = db.hour_sdnn2
+hour_rmssd = db.hour_rmssd
+hour_sdnn = db.hour_sdnn
 
-day_rmssd2 = db.day_rmssd2
-day_sdnn2 = db.day_sdnn2
+day_rmssd = db.day_rmssd
+day_sdnn = db.day_sdnn
 #########################################################
 
 @app.post("/user_data")
@@ -547,7 +547,7 @@ async def start_date(user_email, collection_name):
 @app.get("/get_start_dates/{user_email}")
 async def get_start_dates(user_email: str):
     #collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
-    collections = ['bpm2', 'step2', 'calorie2', 'sleep2']
+    collections = ['bpm', 'step', 'calorie', 'sleep']
     
     print('----?')
     
@@ -556,7 +556,7 @@ async def get_start_dates(user_email: str):
 @app.get("/get_save_dates/{user_email}")
 async def get_save_dates(user_email: str):
     #collections = ['bpm_div', 'step_div', 'calorie_div', 'sleep_div']
-    collections = ['bpm2', 'step2', 'calorie2', 'sleep2']
+    collections = ['bpm', 'step', 'calorie', 'sleep']
     
     return {"save_dates": [max(exist_collection_div(user_email, collections))]}
 
@@ -564,7 +564,7 @@ async def get_save_dates(user_email: str):
 async def get_save_dates_div(user_email: str):
     #collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
     #collections = ['bpm', 'step', 'calorie', 'sleep']
-    collections = ['bpm2', 'step2', 'calorie2', 'sleep2']
+    collections = ['bpm', 'step', 'calorie', 'sleep']
     
     return {"save_dates": [max(await exist_collection_div(user_email, collections))]}
 
@@ -817,4 +817,6 @@ async def bpm_hour_predict(user_email: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+    
+
     
