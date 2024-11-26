@@ -25,16 +25,13 @@ jobs:
         service_account_key: ${{ secrets.GCP_SA_KEY }}
         export_default_credentials: true
 
-    - name: Authorize Docker push
-      run: gcloud auth configure-docker
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker asia-northeast3-docker.pkg.dev
 
     - name: Build and Push Container
       run: |-
         docker build -t asia-northeast3-docker.pkg.dev/${{ env.PROJECT_ID }}/pnuh/${{ env.SERVICE_NAME }}:${{ github.sha }} .
         docker push asia-northeast3-docker.pkg.dev/${{ env.PROJECT_ID }}/pnuh/${{ env.SERVICE_NAME }}:${{ github.sha }}
-
-    - name: Configure Docker for Artifact Registry
-      run: gcloud auth configure-docker asia-northeast3-docker.pkg.dev
 
     - name: Deploy to Cloud Run
       run: |-
