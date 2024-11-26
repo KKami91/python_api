@@ -1,21 +1,21 @@
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'gcr.io/$PROJECT_ID/heart-rate-app10', '.']
+  args: ['build', '-t', 'pnuh/$PROJECT_ID/heart-rate-app11', '.']
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['push', 'gcr.io/$PROJECT_ID/heart-rate-app10']
+  args: ['push', 'pnuh/$PROJECT_ID/heart-rate-app11']
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: 'bash'
   args:
   - '-c'
   - |
-    gcloud run deploy heart-rate-app10 \
-      --image gcr.io/$PROJECT_ID/heart-rate-app10 \
+    gcloud run deploy heart-rate-app11 \
+      --image gcr.io/$PROJECT_ID/heart-rate-app11 \
       --platform managed \
-      --region asia-northeast2 \
+      --region asia-northeast3 \
       --allow-unauthenticated
 
 images:
-- 'gcr.io/$PROJECT_ID/heart-rate-app10'
+- 'gcr.io/$PROJECT_ID/heart-rate-app11'
 
 options:
   logging: CLOUD_LOGGING_ONLY
