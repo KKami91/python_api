@@ -18,22 +18,27 @@ import numpy as np
 import math
 import neurokit2 as nk
 import time
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorClient
 import asyncio
 from dateutil.parser import parse
 import pytz
 
-from database import Database
-from contextlib import asynccontextmanager
 
 
-#app = FastAPI()
+app = FastAPI()
 load_dotenv()
 
 class UserEmailRequest(BaseModel):
     user_email: str
 
-
+# CORS 미들웨어 추가
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://pnu-kkami2.vercel.app"],  # 프론트엔드 도메인
+    allow_credentials=True,
+    allow_methods=["*"],  # 모든 HTTP 메서드 허용
+    allow_headers=["*"],  # 모든 헤더 허용
+)
 
 
 # AWS
@@ -47,136 +52,80 @@ dynamodb = boto3.client('dynamodb',
                         aws_secret_access_key=AWS_SECRET_KEY,
                         region_name=AWS_REGION)
 
+
+
 MONGODB_URI = os.getenv('MONGODB_URI')
-# #client = MongoClient(MONGODB_URI)
-# client = AsyncIOMotorClient(MONGODB_URI)
-# db = client.get_database("heart_rate_db")
-
-class Collections:
-    """데이터베이스 컬렉션 관리 클래스"""
-    def __init__(self, db: AsyncIOMotorDatabase):
-        # 기본 컬렉션
-        self.bpm = db.bpm
-        self.step = db.step
-        self.calorie = db.calorie
-        self.sleep = db.sleep
-        
-        # HRV 관련 컬렉션
-        self.hour_rmssd = db.hour_rmssd
-        self.hour_sdnn = db.hour_sdnn
-        self.day_rmssd = db.day_rmssd
-        self.day_sdnn = db.day_sdnn
-
-class AppState:
-    """애플리케이션 상태 관리 클래스"""
-    def __init__(self):
-        self.client: AsyncIOMotorClient | None = None
-        self.db: AsyncIOMotorDatabase | None = None
-        self.collections: Collections | None = None
-
-app_state = AppState()
+#client = MongoClient(MONGODB_URI)
+client = AsyncIOMotorClient(MONGODB_URI)
+db = client.get_database("heart_rate_db")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 데이터베이스 연결
-    print("애플리케이션 시작: MongoDB 연결 중...")
-    app_state.client = AsyncIOMotorClient(
-        MONGODB_URI,
-        maxPoolSize=10,
-        minPoolSize=5,
-        maxIdleTimeMS=60000,
-    )
-    app_state.db = app_state.client.heart_rate_db
-    app_state.collections = Collections(app_state.db)
-
-    yield
-
-    # 연결 종료
-    print("애플리케이션 종료: MongoDB 연결 정리 중...")
-    if app_state.client:
-        app_state.client.close()
-
-app = FastAPI(lifespan=lifespan)
-
-# CORS 미들웨어 추가
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://pnu-kkami2.vercel.app"],  # 프론트엔드 도메인
-    allow_credentials=True,
-    allow_methods=["*"],  # 모든 HTTP 메서드 허용
-    allow_headers=["*"],  # 모든 헤더 허용
-)
+################ 데이터 각각 나눈 버전 ###############
+bpm_div = db.bpm_div
+step_div = db.step_div
+calorie_div = db.calorie_div
+sleep_div = db.sleep_div
 
 
 
+#############################################################
+#############################################################
 
-# ################ 데이터 각각 나눈 버전 ###############
-# bpm_div = db.bpm_div
-# step_div = db.step_div
-# calorie_div = db.calorie_div
-# sleep_div = db.sleep_div
-
-
-
-# #############################################################
-# #############################################################
-
-# ################ 데이터 각각 나눈 버전 ###############
-# bpm_div = db.bpm_div
-# step_div = db.step_div
-# calorie_div = db.calorie_div
-# sleep_div = db.sleep_div
+################ 데이터 각각 나눈 버전 ###############
+bpm_div = db.bpm_div
+step_div = db.step_div
+calorie_div = db.calorie_div
+sleep_div = db.sleep_div
 
 
 
-# #############################################################
-# #############################################################
+#############################################################
+#############################################################
 
-# ################ 데이터 저장 테스트 ##################
-# bpm_test2 = db.bpm_test2
-# step_test2 = db.step_test2
-# calorie_test2 = db.calorie_test2
-# sleep_test2 = db.sleep_test2
+################ 데이터 저장 테스트 ##################
+bpm_test2 = db.bpm_test2
+step_test2 = db.step_test2
+calorie_test2 = db.calorie_test2
+sleep_test2 = db.sleep_test2
 
-# rmssd = db.rmssd
-# sdnn = db.sdnn
+rmssd = db.rmssd
+sdnn = db.sdnn
 
-# rmssd_test = db.rmssd_test
-# sdnn_test = db.sdnn_test
+rmssd_test = db.rmssd_test
+sdnn_test = db.sdnn_test
 
-# bpm_test3 = db.bpm_test3
-# step_test3 = db.step_test3
-# calorie_test3 = db.calorie_test3
-# sleep_test3 = db.sleep_test3
+bpm_test3 = db.bpm_test3
+step_test3 = db.step_test3
+calorie_test3 = db.calorie_test3
+sleep_test3 = db.sleep_test3
 
-# # bpm = db.bpm
-# # step = db.step
-# # calorie = db.calorie
-# # sleep = db.sleep
-
-# bpm5 = db.bpm5
-# step5 = db.step5
-# calorie5 = db.calorie5
-# sleep5 = db.sleep5
-# rmssd5 = db.rmssd5
-# sdnn5 = db.sdnn5
-
-# rmssdt = db.rmssdt
-# sdnnt = db.sdnnt
-
-# ####################### 저장 방식 변경 ###################
 # bpm = db.bpm
 # step = db.step
 # calorie = db.calorie
 # sleep = db.sleep
 
-# hour_rmssd = db.hour_rmssd
-# hour_sdnn = db.hour_sdnn
+bpm5 = db.bpm5
+step5 = db.step5
+calorie5 = db.calorie5
+sleep5 = db.sleep5
+rmssd5 = db.rmssd5
+sdnn5 = db.sdnn5
 
-# day_rmssd = db.day_rmssd
-# day_sdnn = db.day_sdnn
-# #########################################################
+rmssdt = db.rmssdt
+sdnnt = db.sdnnt
+
+####################### 저장 방식 변경 ###################
+bpm = db.bpm
+step = db.step
+calorie = db.calorie
+sleep = db.sleep
+
+hour_rmssd = db.hour_rmssd
+hour_sdnn = db.hour_sdnn
+
+day_rmssd = db.day_rmssd
+day_sdnn = db.day_sdnn
+#########################################################
 
 @app.post("/user_data")
 async def get_user_data():
@@ -598,7 +547,7 @@ async def start_date(user_email, collection_name):
 @app.get("/get_start_dates/{user_email}")
 async def get_start_dates(user_email: str):
     #collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
-    collections = ['app_state.collections.bpm', 'app_state.collections.step', 'app_state.collections.calorie', 'app_state.collections.sleep']
+    collections = ['bpm', 'step', 'calorie', 'sleep']
     
     print('----?')
     
@@ -651,7 +600,7 @@ async def get_start_dates(user_email: str):
 
 async def get_bpm_all_data(user_email, start_date):
 
-    cursor = app_state.collections.bpm.find({'user_email': user_email, 'timestamp': {'$gte': start_date}})
+    cursor = bpm.find({'user_email': user_email, 'timestamp': {'$gte': start_date}})
     results = await cursor.to_list(length=None)
     return results
 
@@ -680,10 +629,10 @@ async def get_bpm_all_data(user_email, start_date):
 
 ########################## 저장 방식 변경에 의한 구조 변경 ###########################
 async def get_hour_hrv_data(user_email, start_date, end_date):
-    cursor_rmssd = app_state.collections.hour_rmssd.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
+    cursor_rmssd = hour_rmssd.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
     results_rmssd = await cursor_rmssd.to_list(length=None)
     
-    cursor_sdnn = app_state.collections.hour_sdnn.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
+    cursor_sdnn = hour_sdnn.find({'user_email': user_email, 'timestamp': {'$gte': datetime.fromtimestamp(int(start_date[:-3])), '$lte': datetime.fromtimestamp(int(end_date[:-3]))}})
     results_sdnn = await cursor_sdnn.to_list(length=None)
     
     results = pd.DataFrame({
@@ -700,8 +649,8 @@ async def get_hour_hrv_data(user_email, start_date, end_date):
 
 async def get_day_hrv_data(user_email):
 
-    cursor_rmssd = app_state.collections.day_rmssd.find({'user_email': user_email})
-    cursor_sdnn = app_state.collections.day_sdnn.find({'user_email': user_email})
+    cursor_rmssd = day_rmssd.find({'user_email': user_email})
+    cursor_sdnn = day_sdnn.find({'user_email': user_email})
     results_rmssd = await cursor_rmssd.to_list(length=None)
     results_sdnn = await cursor_sdnn.to_list(length=None)
 
@@ -802,7 +751,7 @@ async def bpm_minute_predict(user_email: str):
     print('&&&&&&&&&&&&&&&&&&&&&&&& IN PREDICT MINUTE DIV &&&&&&&&&&&&&&&&&&&&&&&&')
     start_time = datetime.now()
 
-    last_bpm_data = await app_state.collections.bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=15))
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
@@ -833,10 +782,10 @@ async def bpm_minute_predict(user_email: str):
        
 @app.get("/predict_hour_div/{user_email}")
 async def bpm_hour_predict(user_email: str):
-    print('$$$$$$$$$$$$$$$$$$$$$$$$ IN PREDICT MINUTE DIV $$$$$$$$$$$$$$$$$$$$$s$$$')
+    print('$$$$$$$$$$$$$$$$$$$$$$$$ IN PREDICT MINUTE DIV $$$$$$$$$$$$$$$$$$$$$$$$')
     start_time = datetime.now()
 
-    last_bpm_data = await app_state.collections.bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=30))
 
     mongo_bpm_df = pd.DataFrame({
