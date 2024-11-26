@@ -598,7 +598,7 @@ async def start_date(user_email, collection_name):
 @app.get("/get_start_dates/{user_email}")
 async def get_start_dates(user_email: str):
     #collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
-    collections = ['bpm', 'step', 'calorie', 'sleep']
+    collections = ['app_state.collections.bpm', 'app_state.collections.step', 'app_state.collections.calorie', 'app_state.collections.sleep']
     
     print('----?')
     
