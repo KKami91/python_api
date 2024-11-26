@@ -7,7 +7,7 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: heart-rate-app10
+  SERVICE_NAME: heart-rate-app11
   REGION: asia-northeast3
 
 jobs:
