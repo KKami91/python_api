@@ -833,7 +833,7 @@ async def bpm_minute_predict(user_email: str):
        
 @app.get("/predict_hour_div/{user_email}")
 async def bpm_hour_predict(user_email: str):
-    print('$$$$$$$$$$$$$$$$$$$$$$$$ IN PREDICT MINUTE DIV $$$$$$$$$$$$$$$$$$$$$$$$')
+    print('$$$$$$$$$$$$$$$$$$$$$$$$ IN PREDICT MINUTE DIV $$$$$$$$$$$$$$$$$$$$$s$$$')
     start_time = datetime.now()
 
     last_bpm_data = await app_state.collections.bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
