@@ -125,16 +125,47 @@ hour_sdnn = db.hour_sdnn
 
 day_rmssd = db.day_rmssd
 day_sdnn = db.day_sdnn
+user_info = db.user_info
 #########################################################
+
+async def user_info_update():
+    results = [dynamodb.scan(IndexName='email-timestamp-index', TableName=TABLE_NAME)][0]['Items']
+    
+    for x in range(len(results)):
+        user_data = {
+            'user_email': results[x]['email']['S'], 
+            'user_name': results[x]['name']['S'], 
+            'user_gender': results[x]['gender']['S'],
+            'user_height': results[x]['height']['N'],
+            'user_weight': results[x]['weight']['N'],
+            'user_smoke': results[x]['smokingStatus']['S'],
+            'user_birth': results[x]['dob']['S']
+        }
+        
+        user_info.update_one(
+            {'user_email': user_data['user_email']},
+            {'$set': user_data},
+            upsert=True
+        )
 
 @app.post("/user_data")
 async def get_user_data():
-    results = [dynamodb.scan(IndexName='email-timestamp-index', TableName=TABLE_NAME)][0]['Items']
-    return [{'user_email': results[x]['email']['S'], 
-             'user_name': results[x]['name']['S'], 
-             'user_gender': results[x]['gender']['S'],
-             'user_height': results[x]['height']['N'],
-             'user_weight': results[x]['weight']['N']} for x in range(len(results))]
+    collection_names = await db.list_collection_names()
+    if 'user_info' not in collection_names:
+        await user_info.create_index([('user_email', ASCENDING)])
+        await user_info.create_index([('user_smoke', ASCENDING)])
+        await user_info_update()
+        return [{'user_update': 'Yes'}]
+    else:
+        researcher_count = dynamodb.scan(IndexName='email-timestamp-index', TableName=TABLE_NAME, Select='COUNT')['Count']
+        # mongodb smoke, non smoke count로 비교
+        smoke_count = await user_info.count_documents({'user_smoke': '흡연'})
+        nonsmoke_count = await user_info.count_documents({'user_smoke': '비흡연'})
+        if researcher_count == smoke_count + nonsmoke_count:
+            return [{'user_update': 'No'}]
+        else:
+            await user_info_update()
+            return [{'user_update': 'Yes'}]
 
 # @app.post("/check_db3_dynamodb")
 # async def check_db_query_div_dynamodb(request: UserEmailRequest):
@@ -539,15 +570,19 @@ async def get_user_data():
 async def start_date(user_email, collection_name):
     if 'sleep' in collection_name:
         res = await eval(collection_name).find_one({'user_email': user_email}, sort=[('timestamp_start', ASCENDING)])
+
+        if res == None:
+            return None
         return res['timestamp_start']
     else:
         res = await eval(collection_name).find_one({'user_email': user_email}, sort=[('timestamp', ASCENDING)])
+        print('##############', res)
         return res['timestamp']
 
 @app.get("/get_start_dates/{user_email}")
 async def get_start_dates(user_email: str):
     #collections = ['bpm_test3', 'step_test3', 'calorie_test3', 'sleep_test3']
-    collections = ['bpm', 'step', 'calorie', 'sleep']
+    collections = ['bpm', 'step', 'calorie']
     
     print('----?')
     
