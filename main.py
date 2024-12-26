@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 import os
 from pydantic import BaseModel
 import boto3
@@ -22,6 +23,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import asyncio
 from dateutil.parser import parse
 import pytz
+import seaborn as sns
+import matplotlib.pyplot as plt
+import io
+import gc
 
 
 
@@ -127,6 +132,10 @@ day_rmssd = db.day_rmssd
 day_sdnn = db.day_sdnn
 user_info = db.user_info
 #########################################################
+plt.rcParams['font.family'] = 'Malgun Gothic'  # 또는 'NanumGothic'
+plt.rcParams['axes.unicode_minus'] = False  # 마이너스 기호 깨짐 방지
+plt.rcParams['figure.dpi'] = 300  # 기본 DPI 설정
+plt.rcParams['savefig.dpi'] = 300  # 저장 시 DPI 설정
 
 async def user_info_update():
     results = [dynamodb.scan(IndexName='email-timestamp-index', TableName=TABLE_NAME)][0]['Items']
@@ -147,6 +156,86 @@ async def user_info_update():
             {'$set': user_data},
             upsert=True
         )
+        
+@app.post("/user_analysis/{user_email}")
+async def plot_user_analysis(user_email: str):
+    user_info_data = await user_info.find_one({'user_email': user_email})
+    user_name = user_info_data['user_name']
+    user_height = user_info_data['user_height']
+    user_weight = user_info_data['user_weight']
+    user_bmi = np.round(int(user_weight)/((int(user_height) / 100) * 2), 3)
+    user_gender = user_info_data['user_gender'][:1]
+    user_birth = datetime.strptime(user_info_data['user_birth'], "%Y-%m-%d")
+    today = datetime.now()
+    user_age = today.year - user_birth.year
+    if (today.month, today.day) < (user_birth.month, user_birth.day):
+        user_age -= 1
+    
+    user_bpm_data = await bpm.find({'user_email': user_info_data['user_email']}).to_list(length=None)
+    #user_hour_rmssd_data = await hour_rmssd.find({'user_email': user_email})
+    #user_hour_sdnn_data = await hour_sdnn.find({'user_email': user_email})
+    
+    bpm_df = pd.DataFrame({
+        'timestamp': [user_bpm_data[x]['timestamp'] for x in range(len(user_bpm_data))],
+        'bpm': [user_bpm_data[x]['value'] for x in range(len(user_bpm_data))]
+    })
+    
+    bpm_df['timestamp'] = pd.to_datetime(bpm_df['timestamp']).dt.tz_localize('UTC').dt.tz_convert('Asia/Seoul').dt.tz_localize(None)
+    
+    # 시간대별 평균 BPM plot 전용
+    bpm_df['hour_float'] = bpm_df['timestamp'].dt.hour + bpm_df['timestamp'].dt.minute / 60.0
+    bins = np.arange(0, 24.5, 0.5)
+    labels = [f"{int(x)}:{int((x%1)*60):02d}" for x in bins[:-1]]
+    bpm_df['time_bin'] = pd.cut(bpm_df['hour_float'], bins=bins, labels=labels, right=False)
+    hourly_bpm = bpm_df.groupby('time_bin')['bpm'].agg(['mean', 'std']).reset_index()
+    
+    # 히트맵 전용
+    bpm_df['date'] = bpm_df['timestamp'].dt.date
+    bpm_df['hour'] = bpm_df['timestamp'].dt.hour
+    vmin = min(bpm_df['bpm'])
+    vmax = max(bpm_df['bpm'])
+    
+    # plot
+    # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 20))
+    try:
+        fig = plt.figure(figsize=(20, 15), constrained_layout=True)
+        gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.2], hspace=0.1)
+        plt.rc('figure', titlesize=15)
+        
+        
+        # 시간대별 평균 BPM plot
+        ax1 = fig.add_subplot(gs[0])
+        ax1.plot(range(len(hourly_bpm)), hourly_bpm['mean'], '-o', label='평균 심박수')
+        ax1.fill_between(range(len(hourly_bpm)), hourly_bpm['mean'] - hourly_bpm['std'], hourly_bpm['mean'] + hourly_bpm['std'], alpha=0.2)
+        ax1.set_xticks(range(len(hourly_bpm)))
+        ax1.set_xticklabels(hourly_bpm['time_bin'], rotation=45)
+        ax1.set_title(f'시간대 평균 심박수 - {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)', fontsize=20, pad=20)
+        ax1.set_ylabel('심박수', fontsize=14)
+        ax1.set_xlabel('시간', fontsize=14)
+        ax1.grid(True, alpha=0.3)
+        
+        # 날짜와 시간별 평균 BPM Heatmap
+        pivot_table = bpm_df.pivot_table(values='bpm', index='date', columns='hour', aggfunc='mean')
+        ax2 = fig.add_subplot(gs[1])
+        sns.heatmap(pivot_table, cmap='YlOrRd', xticklabels=True, yticklabels=True, vmin=vmin+10, vmax=vmax-10, ax=ax2)
+        ax2.set_title(f'날짜 - 시간대 평균 심박수 히트맵', fontsize=20, pad=20)
+        ax2.set_xlabel('시간', fontsize=14)
+        ax2.set_ylabel('날짜', fontsize=14)
+        
+        
+        # 이미지 PNG로 변환
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', pad_inches=0.5)
+        buf.seek(0)
+        plt.close()
+        
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        print(f"error generating plot : {str(e)}")
+        raise HTTPException(status_code=500, detail="error generating plot")
+    finally:
+        plt.close('all')
+        gc.collect()
 
 @app.post("/user_data")
 async def get_user_data():
