@@ -132,10 +132,18 @@ day_rmssd = db.day_rmssd
 day_sdnn = db.day_sdnn
 user_info = db.user_info
 #########################################################
-plt.rcParams['font.family'] = 'Malgun Gothic'  # 또는 'NanumGothic'
-plt.rcParams['axes.unicode_minus'] = False  # 마이너스 기호 깨짐 방지
-plt.rcParams['figure.dpi'] = 300  # 기본 DPI 설정
-plt.rcParams['savefig.dpi'] = 300  # 저장 시 DPI 설정
+def configure_matplotlib():
+    # 나눔고딕 폰트 설정
+    plt.rcParams['font.family'] = 'NanumGothic'
+    plt.rcParams['axes.unicode_minus'] = False
+    plt.rcParams['figure.dpi'] = 300
+    plt.rcParams['savefig.dpi'] = 300
+    
+    # 폰트 경로 확인 및 설정
+    font_paths = fm.findSystemFonts()
+    for font_path in font_paths:
+        if 'Nanum' in font_path:
+            fm.fontManager.addfont(font_path)
 
 async def user_info_update():
     results = [dynamodb.scan(IndexName='email-timestamp-index', TableName=TABLE_NAME)][0]['Items']
@@ -198,6 +206,7 @@ async def plot_user_analysis(user_email: str):
     # plot
     # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 20))
     try:
+        configure_matplotlib()
         fig = plt.figure(figsize=(20, 15), constrained_layout=True)
         gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.2], hspace=0.1)
         plt.rc('figure', titlesize=15)
