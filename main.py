@@ -136,16 +136,18 @@ user_info = db.user_info
 #########################################################
 def configure_matplotlib():
     # 나눔고딕 폰트 설정
-    plt.rcParams['font.family'] = 'NanumGothic'
+    # plt.rcParams['font.family'] = 'NanumGothic'
+    font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
+    plt.rcParams['font.family'] = fm.FontProperties(fname=font_path).get_name()
     plt.rcParams['axes.unicode_minus'] = False
     plt.rcParams['figure.dpi'] = 300
     plt.rcParams['savefig.dpi'] = 300
     
     # 폰트 경로 확인 및 설정
-    font_paths = fm.findSystemFonts()
-    for font_path in font_paths:
-        if 'Nanum' in font_path:
-            fm.fontManager.addfont(font_path)
+    # font_paths = fm.findSystemFonts()
+    # for font_path in font_paths:
+    #     if 'Nanum' in font_path:
+    #         fm.fontManager.addfont(font_path)
 
 async def user_info_update():
     results = [dynamodb.scan(IndexName='email-timestamp-index', TableName=TABLE_NAME)][0]['Items']
