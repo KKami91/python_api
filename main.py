@@ -167,8 +167,88 @@ async def user_info_update():
             upsert=True
         )
         
-@app.post("/user_analysis/{user_email}")
-async def plot_user_analysis(user_email: str):
+######## 수면 분석 함수 ###########
+def analyze_sleep_patterns(user_sleep_dict):
+    # 각 사용자별 수면 단계 분포
+    sleep_stage_distribution = {}
+    for user_email, sleep_df in user_sleep_dict.items():
+        # 각 수면 단계별 시간 계산
+        stage_durations = sleep_df.groupby('stage').apply(
+            lambda x: ((x['timestamp_end'] - x['timestamp_start']).dt.total_seconds()).sum()
+        ) / 3600  # 시간 단위로 변환
+        sleep_stage_distribution[user_email] = stage_durations
+    
+    data_quality = {}
+    for user_email, sleep_df in user_sleep_dict.items():
+        # 실제 수면 기록이 있는 날짜 수
+        recorded_days = sleep_df['timestamp_start'].dt.date.nunique()
+        data_quality[user_email] = {
+            'recorded_days': recorded_days,
+        }
+        
+    return sleep_stage_distribution, data_quality
+
+@app.post("/user_analysis_sleep/{user_email}")
+async def plot_user_analysis_sleep(user_email: str):
+    print('---------1---------')
+    user_info_data = await user_info.find_one({'user_email': user_email})
+    print('---------2--------')
+    user_name = user_info_data['user_name']
+    user_height = user_info_data['user_height']
+    user_weight = user_info_data['user_weight']
+    user_bmi = np.round(int(user_weight)/((int(user_height) / 100) * 2), 3)
+    user_gender = user_info_data['user_gender'][:1]
+    user_birth = datetime.strptime(user_info_data['user_birth'], "%Y-%m-%d")
+    today = datetime.now()
+    user_age = today.year - user_birth.year
+    if (today.month, today.day) < (user_birth.month, user_birth.day):
+        user_age -= 1
+    print('---------3---------')
+    # 수면 전용
+    user_sleep_data = await sleep.find({'user_email': user_email}).to_list(length=None)
+    sleep_df = pd.DataFrame({
+        'timestamp_start': [user_sleep_data[x]['timestamp_start'] for x in range(len(user_sleep_data))],
+        'timestamp_end': [user_sleep_data[x]['timestamp_end'] for x in range(len(user_sleep_data))],
+        'stage': [user_sleep_data[x]['value'] for x in range(len(user_sleep_data))],
+    })
+    sleep_df['timestamp_start'] = pd.to_datetime(sleep_df['timestamp_start']).dt.tz_localize('UTC').dt.tz_convert('Asia/Seoul').dt.tz_localize(None)
+    sleep_df['timestamp_end'] = pd.to_datetime(sleep_df['timestamp_end']).dt.tz_localize('UTC').dt.tz_convert('Asia/Seoul').dt.tz_localize(None)
+    sleep_data_analysis = analyze_sleep_patterns({user_email : sleep_df})    
+    
+    try:
+        for user_email, stages in sleep_data_analysis[0].items():
+            # 총 시간 계산
+            total_hours = stages.sum()
+            # 비율 계산
+            stage_percentages = (stages / total_hours) * 100
+            stage_dict = {1: 'Awake', 4: 'Light', 5: 'Deep', 6: 'Rem'}
+            
+            # 파이 차트 생성
+            
+            plt.pie(stage_percentages, 
+                    labels=[f'{stage_dict[stage]}' for stage, percentage in stage_percentages.items()],
+                    autopct='%1.1f%%',
+                    startangle=90)
+            plt.title(f"수면 분석 - {user_email} \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi) \n 총 수면 시간 : {np.round(total_hours,2)}시간, 전체 기록 기간 : {sleep_data_analysis[1][user_email]['recorded_days']}일", fontsize=8)
+                # 이미지 PNG로 변환
+        plt.legend(loc=(1,0.6))
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', pad_inches=0.5)
+        buf.seek(0)
+        plt.close()
+        
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        print(f"error generating plot : {str(e)}")
+        raise HTTPException(status_code=500, detail="error generating plot")
+    finally:
+        plt.close('all')
+        gc.collect()
+        
+        
+
+@app.post("/user_analysis_bpm/{user_email}")
+async def plot_user_analysis_bpm(user_email: str):
     user_info_data = await user_info.find_one({'user_email': user_email})
     user_name = user_info_data['user_name']
     user_height = user_info_data['user_height']
@@ -181,7 +261,7 @@ async def plot_user_analysis(user_email: str):
     if (today.month, today.day) < (user_birth.month, user_birth.day):
         user_age -= 1
     
-    user_bpm_data = await bpm.find({'user_email': user_info_data['user_email']}).to_list(length=None)
+    user_bpm_data = await bpm.find({'user_email': user_email}).to_list(length=None)
     #user_hour_rmssd_data = await hour_rmssd.find({'user_email': user_email})
     #user_hour_sdnn_data = await hour_sdnn.find({'user_email': user_email})
     
@@ -199,17 +279,19 @@ async def plot_user_analysis(user_email: str):
     bpm_df['time_bin'] = pd.cut(bpm_df['hour_float'], bins=bins, labels=labels, right=False)
     hourly_bpm = bpm_df.groupby('time_bin')['bpm'].agg(['mean', 'std']).reset_index()
     
-    # 히트맵 전용
+    # 심박수 히트맵 전용
     bpm_df['date'] = bpm_df['timestamp'].dt.date
     bpm_df['hour'] = bpm_df['timestamp'].dt.hour
     vmin = min(bpm_df['bpm'])
     vmax = max(bpm_df['bpm'])
+
     
     # plot
     # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 20))
     try:
-        configure_matplotlib()
-        fig = plt.figure(figsize=(20, 15), constrained_layout=True)
+        # 배포 전용 함수
+        # configure_matplotlib()
+        fig = plt.figure(figsize=(20, 25), constrained_layout=True)
         gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.2], hspace=0.1)
         plt.rc('figure', titlesize=15)
         
@@ -220,10 +302,11 @@ async def plot_user_analysis(user_email: str):
         ax1.fill_between(range(len(hourly_bpm)), hourly_bpm['mean'] - hourly_bpm['std'], hourly_bpm['mean'] + hourly_bpm['std'], alpha=0.2)
         ax1.set_xticks(range(len(hourly_bpm)))
         ax1.set_xticklabels(hourly_bpm['time_bin'], rotation=45)
-        ax1.set_title(f'시간대 평균 심박수 - {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)', fontsize=20, pad=20)
+        ax1.set_title(f'시간대 평균 심박수 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)', fontsize=20, pad=20)
         ax1.set_ylabel('심박수', fontsize=14)
         ax1.set_xlabel('시간', fontsize=14)
         ax1.grid(True, alpha=0.3)
+        ax1.legend(fontsize=20)
         
         # 날짜와 시간별 평균 BPM Heatmap
         pivot_table = bpm_df.pivot_table(values='bpm', index='date', columns='hour', aggfunc='mean')
@@ -232,6 +315,9 @@ async def plot_user_analysis(user_email: str):
         ax2.set_title(f'날짜 - 시간대 평균 심박수 히트맵', fontsize=20, pad=20)
         ax2.set_xlabel('시간', fontsize=14)
         ax2.set_ylabel('날짜', fontsize=14)
+        
+        
+
         
         
         # 이미지 PNG로 변환
