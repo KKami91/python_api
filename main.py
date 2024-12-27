@@ -301,7 +301,7 @@ async def plot_user_analysis_bpm(user_email: str):
         
         # 시간대별 평균 BPM plot
         ax1 = fig.add_subplot(gs[0])
-        ax1.plot(range(len(hourly_bpm)), hourly_bpm['mean'], '-o', label='평균 심박수', fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
+        ax1.plot(range(len(hourly_bpm)), hourly_bpm['mean'], '-o', label='평균 심박수')
         ax1.fill_between(range(len(hourly_bpm)), hourly_bpm['mean'] - hourly_bpm['std'], hourly_bpm['mean'] + hourly_bpm['std'], alpha=0.2)
         ax1.set_xticks(range(len(hourly_bpm)))
         ax1.set_xticklabels(hourly_bpm['time_bin'], rotation=45)
@@ -312,7 +312,7 @@ async def plot_user_analysis_bpm(user_email: str):
         ax1.set_ylabel('심박수', fontsize=14, fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
         ax1.set_xlabel('시간', fontsize=14, fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
         ax1.grid(True, alpha=0.3)
-        ax1.legend(fontsize=20)
+        ax1.legend(fontsize=20, fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
         
         # 날짜와 시간별 평균 BPM Heatmap
         pivot_table = bpm_df.pivot_table(values='bpm', index='date', columns='hour', aggfunc='mean')
