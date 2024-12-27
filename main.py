@@ -231,7 +231,8 @@ async def plot_user_analysis_sleep(user_email: str):
                     labels=[f'{stage_dict[stage]}' for stage, percentage in stage_percentages.items()],
                     autopct='%1.1f%%',
                     startangle=90)
-            plt.title(f"수면 분석 - {user_email} \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi) \n 총 수면 시간 : {np.round(total_hours,2)}시간, 전체 기록 기간 : {sleep_data_analysis[1][user_email]['recorded_days']}일", fontsize=8)
+            plt.title(f"수면 분석 - {user_email} \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi) \n 총 수면 시간 : {np.round(total_hours,2)}시간, 전체 기록 기간 : {sleep_data_analysis[1][user_email]['recorded_days']}일", fontsize=8,
+                      fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
                 # 이미지 PNG로 변환
         plt.legend(loc=(1,0.6))
         buf = io.BytesIO()
@@ -304,7 +305,10 @@ async def plot_user_analysis_bpm(user_email: str):
         ax1.fill_between(range(len(hourly_bpm)), hourly_bpm['mean'] - hourly_bpm['std'], hourly_bpm['mean'] + hourly_bpm['std'], alpha=0.2)
         ax1.set_xticks(range(len(hourly_bpm)))
         ax1.set_xticklabels(hourly_bpm['time_bin'], rotation=45)
-        ax1.set_title(f'시간대 평균 심박수 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)', fontsize=20, pad=20)
+        ax1.set_title(f'시간대 평균 심박수 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)',
+                      fontsize=20,
+                      pad=20,
+                      fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
         ax1.set_ylabel('심박수', fontsize=14)
         ax1.set_xlabel('시간', fontsize=14)
         ax1.grid(True, alpha=0.3)
@@ -314,7 +318,10 @@ async def plot_user_analysis_bpm(user_email: str):
         pivot_table = bpm_df.pivot_table(values='bpm', index='date', columns='hour', aggfunc='mean')
         ax2 = fig.add_subplot(gs[1])
         sns.heatmap(pivot_table, cmap='YlOrRd', xticklabels=True, yticklabels=True, vmin=vmin+10, vmax=vmax-10, ax=ax2)
-        ax2.set_title(f'날짜 - 시간대 평균 심박수 히트맵', fontsize=20, pad=20)
+        ax2.set_title(f'날짜 - 시간대 평균 심박수 히트맵', 
+                      fontsize=20, 
+                      pad=20,
+                      fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
         ax2.set_xlabel('시간', fontsize=14)
         ax2.set_ylabel('날짜', fontsize=14)
         
