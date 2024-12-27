@@ -135,19 +135,32 @@ day_sdnn = db.day_sdnn
 user_info = db.user_info
 #########################################################
 def configure_matplotlib():
-    # 나눔고딕 폰트 설정
-    plt.rcParams['font.family'] = 'NanumGothic'
-    # font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'NanumGothic.ttf')
-    # plt.rcParams['font.family'] = fm.FontProperties(fname=font_path).get_name()
+    import matplotlib.font_manager as fm
+    
+    # 사용 가능한 폰트 목록 확인
+    font_list = [f.name for f in fm.fontManager.ttflist]
+    print("Available fonts:", font_list)  # 로그 확인용
+    
+    # 폰트 설정 시도 (우선순위대로)
+    font_candidates = ['NanumGothic', 'Noto Sans CJK KR', 'Malgun Gothic']
+    selected_font = None
+    
+    for font in font_candidates:
+        if font in font_list:
+            selected_font = font
+            break
+    
+    if selected_font:
+        plt.rcParams['font.family'] = selected_font
+    else:
+        # 폰트를 찾지 못한 경우 직접 폰트 파일 설정
+        font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'  # 적절한 경로로 수정
+        font_prop = fm.FontProperties(fname=font_path)
+        plt.rcParams['font.family'] = font_prop.get_name()
+    
     plt.rcParams['axes.unicode_minus'] = False
     plt.rcParams['figure.dpi'] = 300
     plt.rcParams['savefig.dpi'] = 300
-    
-    # 폰트 경로 확인 및 설정
-    font_paths = fm.findSystemFonts()
-    for font_path in font_paths:
-        if 'Nanum' in font_path:
-            fm.fontManager.addfont(font_path)
 
 async def user_info_update():
     results = [dynamodb.scan(IndexName='email-timestamp-index', TableName=TABLE_NAME)][0]['Items']
@@ -192,6 +205,8 @@ def analyze_sleep_patterns(user_sleep_dict):
 
 @app.post("/user_analysis_sleep/{user_email}")
 async def plot_user_analysis_sleep(user_email: str):
+    font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+    font_prop = fm.FontProperties(fname=font_path)
     print('---------1---------')
     user_info_data = await user_info.find_one({'user_email': user_email})
     print('---------2--------')
@@ -232,9 +247,9 @@ async def plot_user_analysis_sleep(user_email: str):
                     autopct='%1.1f%%',
                     startangle=90)
             plt.title(f"수면 분석 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi) \n 총 수면 시간 : {np.round(total_hours,2)}시간, 전체 기록 기간 : {sleep_data_analysis[1][user_email]['recorded_days']}일", fontsize=8,
-                      fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
+                      fontproperties=font_prop)
                 # 이미지 PNG로 변환
-        plt.legend(loc=(1,0.6), fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
+        plt.legend(loc=(1,0.6))
         buf = io.BytesIO()
         plt.savefig(buf, format='png', pad_inches=0.5)
         buf.seek(0)
@@ -294,6 +309,8 @@ async def plot_user_analysis_bpm(user_email: str):
     try:
         # 배포 전용 함수
         # configure_matplotlib()
+        font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+        font_prop = fm.FontProperties(fname=font_path)
         fig = plt.figure(figsize=(20, 25), constrained_layout=True)
         gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.2], hspace=0.1)
         plt.rc('figure', titlesize=15)
@@ -308,11 +325,11 @@ async def plot_user_analysis_bpm(user_email: str):
         ax1.set_title(f'시간대 평균 심박수 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)',
                       fontsize=20,
                       pad=20,
-                      fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
-        ax1.set_ylabel('심박수', fontsize=14, fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
-        ax1.set_xlabel('시간', fontsize=14, fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
+                      fontproperties=font_prop)
+        ax1.set_ylabel('심박수', fontsize=14, fontproperties=font_prop)
+        ax1.set_xlabel('시간', fontsize=14, fontproperties=font_prop)
         ax1.grid(True, alpha=0.3)
-        ax1.legend(fontsize=20, fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
+        ax1.legend(fontsize=20, fontproperties=font_prop)
         
         # 날짜와 시간별 평균 BPM Heatmap
         pivot_table = bpm_df.pivot_table(values='bpm', index='date', columns='hour', aggfunc='mean')
@@ -321,14 +338,10 @@ async def plot_user_analysis_bpm(user_email: str):
         ax2.set_title(f'날짜 - 시간대 평균 심박수 히트맵', 
                       fontsize=20, 
                       pad=20,
-                      fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
-        ax2.set_xlabel('시간', fontsize=14, fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
-        ax2.set_ylabel('날짜', fontsize=14, fontproperties=fm.FontProperties(fname='/usr/share/fonts/truetype/nanum/NanumGothic.ttf'))
-        
-        
+                      fontproperties=font_prop)
+        ax2.set_xlabel('시간', fontsize=14, fontproperties=font_prop)
+        ax2.set_ylabel('날짜', fontsize=14, fontproperties=font_prop)
 
-        
-        
         # 이미지 PNG로 변환
         buf = io.BytesIO()
         plt.savefig(buf, format='png', pad_inches=0.5)
