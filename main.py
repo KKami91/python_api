@@ -233,6 +233,7 @@ async def plot_user_analysis_sleep(user_email: str):
     sleep_data_analysis = analyze_sleep_patterns({user_email : sleep_df})    
     
     try:
+        configure_matplotlib()
         for user_email, stages in sleep_data_analysis[0].items():
             # 총 시간 계산
             total_hours = stages.sum()
@@ -246,8 +247,7 @@ async def plot_user_analysis_sleep(user_email: str):
                     labels=[f'{stage_dict[stage]}' for stage, percentage in stage_percentages.items()],
                     autopct='%1.1f%%',
                     startangle=90)
-            plt.title(f"수면 분석 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi) \n 총 수면 시간 : {np.round(total_hours,2)}시간, 전체 기록 기간 : {sleep_data_analysis[1][user_email]['recorded_days']}일", fontsize=8,
-                      fontproperties=font_prop)
+            plt.title(f"수면 분석 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi) \n 총 수면 시간 : {np.round(total_hours,2)}시간, 전체 기록 기간 : {sleep_data_analysis[1][user_email]['recorded_days']}일", fontsize=8)
                 # 이미지 PNG로 변환
         plt.legend(loc=(1,0.6))
         buf = io.BytesIO()
@@ -308,9 +308,9 @@ async def plot_user_analysis_bpm(user_email: str):
     # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 20))
     try:
         # 배포 전용 함수
-        # configure_matplotlib()
-        font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
-        font_prop = fm.FontProperties(fname=font_path)
+        configure_matplotlib()
+        # font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+        # font_prop = fm.FontProperties(fname=font_path)
         fig = plt.figure(figsize=(20, 25), constrained_layout=True)
         gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.2], hspace=0.1)
         plt.rc('figure', titlesize=15)
@@ -324,12 +324,11 @@ async def plot_user_analysis_bpm(user_email: str):
         ax1.set_xticklabels(hourly_bpm['time_bin'], rotation=45)
         ax1.set_title(f'시간대 평균 심박수 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)',
                       fontsize=20,
-                      pad=20,
-                      fontproperties=font_prop)
-        ax1.set_ylabel('심박수', fontsize=14, fontproperties=font_prop)
-        ax1.set_xlabel('시간', fontsize=14, fontproperties=font_prop)
+                      pad=20)
+        ax1.set_ylabel('심박수', fontsize=14)
+        ax1.set_xlabel('시간', fontsize=14)
         ax1.grid(True, alpha=0.3)
-        ax1.legend(fontsize=20, fontproperties=font_prop)
+        ax1.legend(fontsize=20)
         
         # 날짜와 시간별 평균 BPM Heatmap
         pivot_table = bpm_df.pivot_table(values='bpm', index='date', columns='hour', aggfunc='mean')
@@ -337,10 +336,9 @@ async def plot_user_analysis_bpm(user_email: str):
         sns.heatmap(pivot_table, cmap='YlOrRd', xticklabels=True, yticklabels=True, vmin=vmin+10, vmax=vmax-10, ax=ax2)
         ax2.set_title(f'날짜 - 시간대 평균 심박수 히트맵', 
                       fontsize=20, 
-                      pad=20,
-                      fontproperties=font_prop)
-        ax2.set_xlabel('시간', fontsize=14, fontproperties=font_prop)
-        ax2.set_ylabel('날짜', fontsize=14, fontproperties=font_prop)
+                      pad=20)
+        ax2.set_xlabel('시간', fontsize=14)
+        ax2.set_ylabel('날짜', fontsize=14)
 
         # 이미지 PNG로 변환
         buf = io.BytesIO()

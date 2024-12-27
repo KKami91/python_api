@@ -16,10 +16,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 폰트 파일 직접 복사 (옵션)
-COPY fonts/ /usr/share/fonts/truetype/
-RUN fc-cache -f -v
-
 COPY . .
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
