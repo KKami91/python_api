@@ -268,7 +268,7 @@ async def plot_user_analysis_step(user_email: str):
         for rect in bar1:
             height = rect.get_height()
             ax1.text(rect.get_x() + rect.get_width()/2.0, height, '%.1f' % height, ha='center', va='bottom', size=12)
-        ax1.set_title(f'시간별 평균 걸음 수 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)',
+        ax1.set_title(f'{user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)\n\n시간별 평균 걸음 수',
                         fontsize=20, 
                         pad=20,
                         linespacing=1.5)
@@ -574,7 +574,7 @@ async def plot_user_analysis_bpm(user_email: str):
         
         # 이미지 PNG로 변환
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', pad_inches=0.5, dpi=100)
+        plt.savefig(buf, format='png', pad_inches=0.5, dpi=80)
         buf.seek(0)
         plt.close()
         
