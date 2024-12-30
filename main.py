@@ -283,7 +283,7 @@ async def plot_user_analysis_step(user_email: str):
         for rect in bar2:
             height = rect.get_height()
             ax2.text(rect.get_x() + rect.get_width()/2.0, height, '%.1f' % height, ha='center', va='bottom', size=12)
-        ax2.set_title(f'일별 평균 걸음수',
+        ax2.set_title(f'일별 평균 걸음 수',
                       fontsize=20,
                       pad=20,
                       linespacing=1.5)
