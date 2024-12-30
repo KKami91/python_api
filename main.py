@@ -182,6 +182,15 @@ async def user_info_update():
             upsert=True
         )
         
+async def get_bpm_df(user_email: str):
+    user_bpm_data = await bpm.find({'user_email': user_email}).to_list(length=None)
+    bpm_df = pd.DataFrame({
+        'timestamp': [user_bpm_data[x]['timestamp'] for x in range(len(user_bpm_data))],
+        'bpm': [user_bpm_data[x]['value'] for x in range(len(user_bpm_data))]
+    })  
+    bpm_df['timestamp'] = pd.to_datetime(bpm_df['timestamp']).dt.tz_localize('UTC').dt.tz_convert('Asia/Seoul').dt.tz_localize(None)  
+    return bpm_df
+        
 ######## 수면 분석 함수 ###########
 def analyze_sleep_patterns(user_sleep_dict):
     # 각 사용자별 수면 단계 분포
@@ -203,13 +212,57 @@ def analyze_sleep_patterns(user_sleep_dict):
         
     return sleep_stage_distribution, data_quality
 
+######## 수면 stage별 평균 심박수 ######
+def analyze_sleep_heart_rate(user_sleep_dict, user_bpm_dict):
+    sleep_hr_analysis = {}
+    
+    for user_email in user_sleep_dict.keys():
+        sleep_df = user_sleep_dict[user_email]
+        bpm_df = user_bpm_dict[user_email]
+        
+        # 수면 중 평균 심박수 계산
+        sleep_periods = []
+        for _, row in sleep_df.iterrows():
+            mask = (bpm_df['timestamp'] >= row['timestamp_start']) & \
+                  (bpm_df['timestamp'] <= row['timestamp_end'])
+            
+            # 각 수면 기간의 데이터 수집
+            if bpm_df.loc[mask, 'bpm'].size > 0:  # 데이터가 있는 경우만
+                sleep_periods.append({
+                    'stage': row['stage'],
+                    'mean_hr': bpm_df.loc[mask, 'bpm'].mean(),
+                    'start_time': row['timestamp_start'],
+                    'duration': (row['timestamp_end'] - row['timestamp_start']).total_seconds() / 3600
+                })
+        
+        # 수면 단계별 평균 심박수 분석
+        stage_analysis = {}
+        for stage in set([p['stage'] for p in sleep_periods]):
+            stage_periods = [p for p in sleep_periods if p['stage'] == stage]
+            if stage_periods:
+                stage_analysis[stage] = {
+                    'mean_hr': np.mean([p['mean_hr'] for p in stage_periods]),
+                    'std_hr': np.std([p['mean_hr'] for p in stage_periods]),
+                    'total_duration': sum([p['duration'] for p in stage_periods])
+                }
+        
+        sleep_hr_analysis[user_email] = {
+            'stage_analysis': stage_analysis,
+            'sleep_periods': sleep_periods
+        }
+    
+    return sleep_hr_analysis
+
+def int_to_str_time(int_time):
+    hours = int(int_time)
+    float_minutes = (int_time - hours) * 60
+    minutes = int(float_minutes)
+    seconds = (float_minutes - minutes) * 60
+    return f"{hours}시간 {minutes}분 {int(np.round(seconds,0))}초"
+
 @app.post("/user_analysis_sleep/{user_email}")
 async def plot_user_analysis_sleep(user_email: str):
-    font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
-    font_prop = fm.FontProperties(fname=font_path)
-    print('---------1---------')
     user_info_data = await user_info.find_one({'user_email': user_email})
-    print('---------2--------')
     user_name = user_info_data['user_name']
     user_height = user_info_data['user_height']
     user_weight = user_info_data['user_weight']
@@ -220,7 +273,6 @@ async def plot_user_analysis_sleep(user_email: str):
     user_age = today.year - user_birth.year
     if (today.month, today.day) < (user_birth.month, user_birth.day):
         user_age -= 1
-    print('---------3---------')
     # 수면 전용
     user_sleep_data = await sleep.find({'user_email': user_email}).to_list(length=None)
     sleep_df = pd.DataFrame({
@@ -230,26 +282,38 @@ async def plot_user_analysis_sleep(user_email: str):
     })
     sleep_df['timestamp_start'] = pd.to_datetime(sleep_df['timestamp_start']).dt.tz_localize('UTC').dt.tz_convert('Asia/Seoul').dt.tz_localize(None)
     sleep_df['timestamp_end'] = pd.to_datetime(sleep_df['timestamp_end']).dt.tz_localize('UTC').dt.tz_convert('Asia/Seoul').dt.tz_localize(None)
-    sleep_data_analysis = analyze_sleep_patterns({user_email : sleep_df})    
+    sleep_data_analysis = analyze_sleep_patterns({user_email : sleep_df})
+    
+    bpm_df = await get_bpm_df(user_email)
+    sleep_bpm_analysis = analyze_sleep_heart_rate({user_email: sleep_df}, {user_email: bpm_df})
+    sleep_bpm_stat = sleep_bpm_analysis[user_email]['stage_analysis']
+    # total_sleep_time = sum(item['total_duration'] for item in sleep_bpm_stat.values())
     
     try:
-        configure_matplotlib()
-        for user_email, stages in sleep_data_analysis[0].items():
-            # 총 시간 계산
-            total_hours = stages.sum()
-            # 비율 계산
-            stage_percentages = (stages / total_hours) * 100
-            stage_dict = {1: 'Awake', 4: 'Light', 5: 'Deep', 6: 'Rem'}
-            
-            # 파이 차트 생성
-            
-            plt.pie(stage_percentages, 
-                    labels=[f'{stage_dict[stage]}' for stage, percentage in stage_percentages.items()],
-                    autopct='%1.1f%%',
-                    startangle=90)
-            plt.title(f"수면 분석 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi) \n 총 수면 시간 : {np.round(total_hours,2)}시간, 전체 기록 기간 : {sleep_data_analysis[1][user_email]['recorded_days']}일", fontsize=8)
-                # 이미지 PNG로 변환
-        plt.legend(loc=(1,0.6))
+        stage_dict = {1: 'Awake', 4: 'Light', 5: 'Deep', 6: 'Rem'}
+        mean_hr = [item['mean_hr'] for item in sleep_bpm_stat.values()]
+        stages = [stage_dict[item] for item in sleep_bpm_stat.keys()]
+        total_duration = [item['total_duration'] for item in sleep_bpm_stat.values()]
+        total_hours = sum(total_duration)
+        total_sleep_time = sum(total_duration)
+        stage_percentages = np.round(np.array(total_duration) / total_sleep_time * 100, 2)
+        labels = [f'{stages[x]}\n평균 심박수 : {np.round(mean_hr[x],2)}' for x in range(len(stages))]
+
+        plt.figure(figsize=(10,8))
+        plt.pie(stage_percentages,
+                labels=labels,
+                autopct='%1.1f%%',
+                startangle=90,
+                textprops={'ha':'center', 'va':'center'},
+                labeldistance=1.28)
+        plt.title(f"수면 분석\n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi) \n 총 수면 시간 : {int_to_str_time(total_hours)}, 전체 기록 기간 : {sleep_data_analysis[1][user_email]['recorded_days']}일",
+                  fontsize=14,
+                  loc='center',
+                  pad=20,
+                  linespacing=1.5)
+        plt.gcf().subplots_adjust(top=0.85)
+        
+        plt.legend(stages, title="Sleep Stages", loc=(1,0.8))
         buf = io.BytesIO()
         plt.savefig(buf, format='png', pad_inches=0.5)
         buf.seek(0)
@@ -314,6 +378,7 @@ async def plot_user_analysis_bpm(user_email: str):
         fig = plt.figure(figsize=(20, 25), constrained_layout=True)
         gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.2], hspace=0.1)
         plt.rc('figure', titlesize=15)
+        plt.gcf().subplots_adjust(top=0.85)
         
         
         # 시간대별 평균 BPM plot
@@ -324,7 +389,8 @@ async def plot_user_analysis_bpm(user_email: str):
         ax1.set_xticklabels(hourly_bpm['time_bin'], rotation=45)
         ax1.set_title(f'시간대 평균 심박수 \n {user_email}, {user_name}({user_gender}), {user_age}세, {user_height}cm, {user_weight}kg, {user_bmi}(kg/m^2 = bmi)',
                       fontsize=20,
-                      pad=20)
+                      pad=20,
+                      linespacing=1.5)
         ax1.set_ylabel('심박수', fontsize=14)
         ax1.set_xlabel('시간', fontsize=14)
         ax1.grid(True, alpha=0.3)
