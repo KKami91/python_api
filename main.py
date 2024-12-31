@@ -24,6 +24,9 @@ import asyncio
 from dateutil.parser import parse
 import pytz
 import seaborn as sns
+# tkinter 사용방지
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import io
