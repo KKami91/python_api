@@ -253,14 +253,32 @@ async def plot_user_analysis_step(user_email: str):
     print('after weekdays, weekdays_steps')
     print(weekdays, weekdays_steps)
     
+    ##### 걸음 수 <-> BPM ######
+    bpm_df = await get_bpm_df(user_email)
+    max_step = step_df['step'].max()
+    result_step = {}
+    result_bpm = {}
+    for i in range(1, int(np.ceil(max_step / 10)) + 1):
+        temp_step = step_df[(step_df['step'] >= 1 + (10 * (i - 1))) & (step_df['step'] <= 10 * i)].reset_index(drop=True)
+        result_step[i * 10] = temp_step
+        temp_bpm = bpm_df[bpm_df['timestamp'].isin(temp_step['timestamp'])]
+        result_bpm[i * 10] = temp_bpm
+    keys_list = list(result_bpm.keys())
+    result_bpm_df = pd.DataFrame({
+        'range': [f'{x - 9} ~ {x}' for x in keys_list],
+        'average_bpm': [np.round(np.mean(result_bpm[x]['bpm']), 2) for x in keys_list]
+    })
+    range_list = list(result_bpm_df['range'])
+    average_bpm_list = list(result_bpm_df['average_bpm'])
+        
     try:
         configure_matplotlib()
         # fig = plt.figure(figsize=(20, 16), constrained_layout=True)
-        fig = plt.figure(figsize=(20, 16))
+        fig = plt.figure(figsize=(30, 24))
         # gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.2], hspace=0.1)
-        gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.2])
+        gs = fig.add_gridspec(3, 1, height_ratios=[1, 1.2, 1.2])
         plt.rc('figure', titlesize=15)
-        plt.gcf().subplots_adjust(top=0.85, left=0.2, bottom=0.1, right=0.85, hspace=0.4)
+        plt.gcf().subplots_adjust(top=0.9, left=0.2, bottom=0.1, right=0.85, hspace=0.4)
         
         #### 시간별 ####
         ax1 = fig.add_subplot(gs[0])
@@ -272,8 +290,8 @@ async def plot_user_analysis_step(user_email: str):
                         fontsize=20, 
                         pad=20,
                         linespacing=1.5)
-        ax1.set_ylabel('걸음 수', fontsize=14)
-        ax1.set_xlabel('시간', fontsize=14)
+        ax1.set_ylabel('걸음 수', fontsize=16)
+        ax1.set_xlabel('시간', fontsize=16)
         ax1.set_xticks(ticks=range(0,24))
         
         #### 요일별 ####
@@ -287,8 +305,22 @@ async def plot_user_analysis_step(user_email: str):
                       fontsize=20,
                       pad=20,
                       linespacing=1.5)
-        ax2.set_ylabel('걸음 수', fontsize=14)
-        ax2.set_xlabel('요일', fontsize=14)
+        ax2.set_ylabel('걸음 수', fontsize=16)
+        ax2.set_xlabel('요일', fontsize=16)
+        
+        ax3 = fig.add_subplot(gs[2])
+        bar3 = ax3.bar(range_list, average_bpm_list)
+        for rect in bar3:
+            height = rect.get_height()
+            ax3.text(rect.get_x() + rect.get_width()/2.0, height, '%.1f' % height, ha='center', va='bottom', size=12)
+        ax3.set_title('걸음 수 범위별 평균 심박수',
+                      fontsize=20,
+                      pad=20,
+                      linespacing=1.5)
+        ax3.set_ylabel('심박수', fontsize=16)
+        ax3.set_xlabel('걸음 수 범위', fontsize=16)
+        ax3.set_xticks(range(len(range_list)))  # X축 위치 설정
+        ax3.set_xticklabels(range_list, rotation=45, ha='center')  # 레이블과 회전 설정
         
         
     
