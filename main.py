@@ -444,7 +444,7 @@ async def plot_user_analysis_sleep(user_email: str):
     
     try:
         configure_matplotlib()
-        stage_dict = {1: 'Awake', 4: 'Light', 5: 'Deep', 6: 'Rem'}
+        stage_dict = {0: 'Unknown', 1: 'Awake', 4: 'Light', 5: 'Deep', 6: 'Rem'}
         mean_hr = [item['mean_hr'] for item in sleep_bpm_stat.values()]
         stages = [stage_dict[item] for item in sleep_bpm_stat.keys()]
         total_duration = [item['total_duration'] for item in sleep_bpm_stat.values()]
