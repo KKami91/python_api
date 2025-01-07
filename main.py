@@ -44,8 +44,7 @@ class UserEmailRequest(BaseModel):
 # CORS 미들웨어 추가
 app.add_middleware(
     CORSMiddleware,
-    #allow_origins=["https://pnu-kkami2.vercel.app"],  # 프론트엔드 도메인
-    allow_origins=["*"],  # 프론트엔드 도메인
+    allow_origins=["https://pnu-kkami2.vercel.app"],  # 프론트엔드 도메인
     allow_credentials=True,
     allow_methods=["*"],  # 모든 HTTP 메서드 허용
     allow_headers=["*"],  # 모든 헤더 허용
@@ -1291,39 +1290,48 @@ async def bpm_minute_predict(user_email: str):
        
 @app.get("/predict_hour_div/{user_email}")
 async def bpm_hour_predict(user_email: str):
-    print('$$$$$$$$$$$$$$$$$$$$$$$$ IN PREDICT MINUTE DIV $$$$$$$$$$$$$$$$$$$$$$$$')
+    print('$$$$$$$$$$$$$$$$$$$$$$$$ IN PREDICT HOUR DIV $$$$$$$$$$$$$$$$$$$$$$$$')
     start_time = datetime.now()
 
     last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    print('111111111111111111111')
     query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=30))
-
+    print('222222222222222222222')
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
         'bpm': [doc['value'] for doc in query]
     })
+    print('333333333333333333333')  
     mongo_bpm_df.rename(columns={'bpm': 'y'}, inplace=True)
+    print('444444444444444444444')
     hour_df = mongo_bpm_df.groupby(mongo_bpm_df['ds'].dt.floor('h')).agg({'y':'mean'}).reset_index()
-    print('$$$$', hour_df[:5])
+    print('555555555555555555555')
     hour_model = Prophet(
         changepoint_prior_scale=0.01,
         seasonality_mode='multiplicative',
     )
+    print('666666666666666666666')
     hour_model.add_seasonality(name='hourly', period=24, fourier_order=5)
+    print('777777777777777777777')
     hour_model.add_country_holidays(country_name='KOR')
+    print('888888888888888888888')
     hour_model.fit(hour_df)
-
+    print('999999999999999999999')
     hour_future = hour_model.make_future_dataframe(periods=72, freq='h')
+    print('101010101010101010101')
     hour_forecast = hour_model.predict(hour_future)
-    
+    print('111111111111111111111')
     hour_forecast.rename(columns={'yhat': 'hour_pred_bpm'}, inplace=True)
+    print('121212121212121212121')
     hour_forecast['hour_pred_bpm'] = np.round(hour_forecast['hour_pred_bpm'], 3)
+    print('131313131313131313131')
     
     end_time = datetime.now()
     print(f'in predict_hour_div 걸린 시간 : {end_time - start_time} ---- {len(hour_df)}')
     
 
     hour_forecast['ds'] = hour_forecast['ds'].dt.tz_localize('UTC')
-    
+    print('141414141414141414141')
     #hour_forecast.to_csv('hour_forecast.csv')
 
     print('$$$$$$$$$$$$$$$$$$$$$$$$ OUT PREDICT MINUTE DIV $$$$$$$$$$$$$$$$$$$$$$$$')
