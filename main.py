@@ -1258,24 +1258,33 @@ async def bpm_day_feature2(user_email: str):
 async def bpm_minute_predict(user_email: str):
     print('&&&&&&&&&&&&&&&&&&&&&&&& IN PREDICT MINUTE DIV &&&&&&&&&&&&&&&&&&&&&&&&')
     start_time = datetime.now()
-
+    print('1')
     last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
+    print('2')
     query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=15))
+    print('3')
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
         'bpm': [doc['value'] for doc in query]
     })
+    print('4')
     mongo_bpm_df = mongo_bpm_df[mongo_bpm_df['ds'].dt.second == 0]
+    print('5')
     mongo_bpm_df.rename(columns={'bpm': 'y'}, inplace=True)
+    print('6')
     min_model = Prophet(
         changepoint_prior_scale=0.0001,
         seasonality_mode='multiplicative',
     )
+    print('7')
 
     min_model.fit(mongo_bpm_df)
     
+    print('8')
     min_future = min_model.make_future_dataframe(periods=60*24*1, freq='min')
+    print('9')
     min_forecast = min_model.predict(min_future)
+    print('10')
     
     min_forecast.rename(columns={'yhat': 'min_pred_bpm'}, inplace=True)
     min_forecast['min_pred_bpm'] = np.round(min_forecast['min_pred_bpm'], 3)  
