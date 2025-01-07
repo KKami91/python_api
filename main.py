@@ -1261,7 +1261,7 @@ async def bpm_minute_predict(user_email: str):
     print('1')
     last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     print('2')
-    query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=15))
+    query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=7))
     print('3')
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
@@ -1304,7 +1304,7 @@ async def bpm_hour_predict(user_email: str):
 
     last_bpm_data = await bpm.find_one({'user_email': user_email}, sort=[('timestamp', DESCENDING)])
     print('111111111111111111111')
-    query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=30))
+    query = await get_bpm_all_data(user_email, last_bpm_data['timestamp'] - timedelta(days=15))
     print('222222222222222222222')
     mongo_bpm_df = pd.DataFrame({
         'ds': [doc['timestamp'] for doc in query],
